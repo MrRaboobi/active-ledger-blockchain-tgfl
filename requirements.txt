@@ -20,3 +20,7 @@ seaborn>=0.12.0
 # Blockchain (Phase 2)
 web3>=6.0.0
 py-solc-x>=2.0.0
+
+# Generative AI (Phase 2.3)
+diffusers>=0.20.0
+accelerate>=0.22.0

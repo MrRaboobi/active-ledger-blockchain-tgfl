@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
+import time
 import numpy as np
 import torch
 import torch.nn as nn
@@ -47,6 +48,8 @@ class FLClient(fl.client.NumPyClient):
         val_loader,
         config: Dict,
         is_malicious: bool = False,
+        blockchain_manager=None,
+        enable_synthetic: bool = False,
     ):
         self.client_id = client_id
         self.model = deepcopy(model)
@@ -54,8 +57,12 @@ class FLClient(fl.client.NumPyClient):
         self.val_loader = val_loader
         self.config = config
         self.is_malicious = is_malicious
+        self.blockchain = blockchain_manager
         self.device = torch.device("cpu")
         self.model.to(self.device)
+        self.enable_synthetic = enable_synthetic
+        from diffusion import ECGDiffusionGenerator
+        self.generator = ECGDiffusionGenerator()
 
     # ------------------------------------------------------------------
     def get_parameters(self, config: Dict) -> NDArrays:
@@ -69,10 +76,55 @@ class FLClient(fl.client.NumPyClient):
                 p.copy_(torch.tensor(new_p))
 
     # ------------------------------------------------------------------
+    def analyze_local_distribution(self):
+        class_counts = {i: 0 for i in range(5)}
+        for data, label in self.train_loader.dataset:
+            label_val = int(label.item() if hasattr(label, 'item') else label)
+            if label_val in class_counts:
+                class_counts[label_val] += 1
+        return class_counts
+
+    # ------------------------------------------------------------------
     def fit(
         self, parameters: NDArrays, config: Dict
     ) -> Tuple[NDArrays, int, Dict[str, Scalar]]:
         """Local training step."""
+        distribution = self.analyze_local_distribution()
+        generated_req_ids = []
+        if self.enable_synthetic:
+            for missing_class, count in distribution.items():
+                if count < 50 and self.blockchain is not None:
+                    req_id = self.blockchain.request_synthetic(client_id=int(self.client_id), class_label=int(missing_class), quantity=100)
+                    print(f"Client {self.client_id} requesting synthetic data for class {missing_class}")
+                    attempts = 0
+                    while True:
+                        status = self.blockchain.get_synthetic_request(req_id)
+                        if status.get('approved') == True:
+                            print(f"Generation authorized for class {missing_class}")
+                            
+                            synthetic_X = self.generator.generate_synthetic_ecg(class_label=int(missing_class), quantity=2, num_inference_steps=2)
+                            synthetic_y = np.full(2, int(missing_class), dtype=np.int64)
+                            
+                            old_X = torch.cat([batch[0] for batch in self.train_loader])
+                            old_y = torch.cat([batch[1] for batch in self.train_loader])
+                            
+                            new_X = torch.cat([old_X, torch.tensor(synthetic_X, dtype=torch.float32)], dim=0)
+                            new_y = torch.cat([old_y, torch.tensor(synthetic_y, dtype=torch.long)], dim=0)
+                            
+                            from torch.utils.data import TensorDataset, DataLoader
+                            new_dataset = TensorDataset(new_X, new_y)
+                            self.train_loader = DataLoader(new_dataset, batch_size=32, shuffle=True)
+                            
+                            print(f"[CLIENT] Augmented local dataset with 2 synthetic samples for class {missing_class}.")
+                            generated_req_ids.append(req_id)
+                            break
+                        
+                        attempts += 1
+                        if attempts >= 10:
+                            print(f"Client {self.client_id} request timed out/rejected. Bypassing.")
+                            break
+                        time.sleep(2)
+
         self.set_parameters(parameters)
 
         local_epochs = int(config.get("local_epochs", self.config["federated"]["local_epochs"]))
@@ -84,6 +136,10 @@ class FLClient(fl.client.NumPyClient):
         self.model.train()
         for _ in range(local_epochs):
             train_epoch(self.model, self.train_loader, criterion, optimizer, self.device)
+
+        for req_id in generated_req_ids:
+            self.blockchain.mark_synthetic_generated(req_id)
+            print("[CLIENT] Synthetic data generation cryptographically verified and marked on-chain.")
 
         # Evaluate to get honest accuracy before (potentially) poisoning
         val_metrics = evaluate(self.model, self.val_loader, criterion, self.device)

@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
+import threading
+import time
 from typing import Dict, List, Optional, Tuple
 import numpy as np
 
@@ -93,6 +95,42 @@ def calculate_score(history: List[Dict]) -> float:
     # Strict (0, 1) bound
     score = min(max(raw_score, 1e-6), 1.0 - 1e-6)
     return float(score)
+
+# ---------------------------------------------------------------------------
+# Approval Daemon
+# ---------------------------------------------------------------------------
+def start_approval_daemon(blockchain, eth_accounts, stop_event, check_interval=2.0):
+    """
+    Background daemon running on the server to approve synthetic data requests.
+    """
+    print("[SERVER DAEMON] Started background approval daemon.")
+    processed_rejections = set()
+    while not stop_event.is_set():
+        try:
+            total_reqs = blockchain.contract.functions.getTotalSyntheticRequests().call()
+            # Only check the most recent 20 requests to keep it snappy
+            start_idx = max(0, total_reqs - 20)
+            for i in range(start_idx, total_reqs):
+                req = blockchain.get_synthetic_request(i)
+                if not req['approved'] and not req['generated']:
+                    client_id = req['client_id']
+                    addr_idx = int(client_id) % len(eth_accounts)
+                    eth_addr = eth_accounts[addr_idx]
+                    
+                    history = fetch_client_history(eth_addr, blockchain.contract, blockchain.w3)
+                    score = calculate_score(history)
+                    
+                    if score >= 0.4:
+                        blockchain.approve_synthetic(i)
+                        print(f"[SERVER DAEMON] Approved request ID {i} for Client {client_id} (PoC: {score:.3f})")
+                    else:
+                        if i not in processed_rejections:
+                            print(f"[SERVER DAEMON] Rejected request ID {i} for Client {client_id} (PoC: {score:.3f})")
+                            processed_rejections.add(i)
+        except Exception as e:
+            pass
+        time.sleep(check_interval)
+    print("[SERVER DAEMON] Stopped.")
 
 
 # ---------------------------------------------------------------------------
