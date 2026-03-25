@@ -1,4 +1,4 @@
-"""
+﻿"""
 Visualize ECG Data
 """
 
@@ -8,7 +8,7 @@ import numpy as np
 from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parent))
-from utils import load_config
+from core.utils import load_config
 
 def visualize_ecg():
     """Visualize ECG signal and annotations"""

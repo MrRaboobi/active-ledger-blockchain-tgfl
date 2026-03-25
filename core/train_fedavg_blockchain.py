@@ -1,4 +1,4 @@
-"""
+﻿"""
 FedAvg with Blockchain Provenance Logging
 """
 
@@ -12,14 +12,14 @@ import time
 import sys
 sys.path.append(str(Path(__file__).parent))
 
-from utils import load_config
-from model import create_model
-from train_utils import (
+from core.utils import load_config
+from core.model import create_model
+from core.train_utils import (
     load_client_data, create_data_loaders, 
     train_epoch, evaluate, print_metrics, ECGDataset
 )
 from torch.utils.data import DataLoader
-from blockchain import BlockchainManager
+from core.blockchain import BlockchainManager
 
 def train_client(model, train_loader, val_loader, epochs, learning_rate, device):
     """Train a client locally for several epochs"""

@@ -1,8 +1,8 @@
-"""
+﻿"""
 View Blockchain Audit Trail
 """
 
-from blockchain import BlockchainManager
+from core.blockchain import BlockchainManager
 
 def view_audit():
     """Display complete blockchain audit trail"""

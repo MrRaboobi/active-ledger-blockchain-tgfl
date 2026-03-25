@@ -1,4 +1,4 @@
-"""
+﻿"""
 Federated Averaging (FedAvg) Training
 """
 
@@ -11,9 +11,9 @@ from copy import deepcopy
 import sys
 sys.path.append(str(Path(__file__).parent))
 
-from utils import load_config
-from model import create_model
-from train_utils import (
+from core.utils import load_config
+from core.model import create_model
+from core.train_utils import (
     load_client_data, create_data_loaders, 
     train_epoch, evaluate, print_metrics, ECGDataset
 )

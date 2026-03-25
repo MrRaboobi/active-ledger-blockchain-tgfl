@@ -1,4 +1,4 @@
-"""
+﻿"""
 Preprocess ECG Data
 Segment into heartbeats, normalize, and save
 """
@@ -10,7 +10,7 @@ import pickle
 from tqdm import tqdm
 import sys
 sys.path.append(str(Path(__file__).parent))
-from utils import load_config
+from core.utils import load_config
 
 # Annotation mapping to classes
 ANNOTATION_MAP = {

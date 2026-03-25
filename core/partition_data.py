@@ -1,4 +1,4 @@
-"""
+﻿"""
 Partition preprocessed ECG data into non-IID client datasets.
 Uses Dirichlet(alpha=0.5) distribution over labels — supports any num_clients.
 """
@@ -9,7 +9,7 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 import sys
 sys.path.append(str(Path(__file__).parent))
-from utils import load_config
+from core.utils import load_config
 
 
 def create_non_iid_partitions(X, y, config):

@@ -1,11 +1,11 @@
-"""
+﻿"""
 Flower Server Strategy — Proof-of-Contribution (PoC) Active-Ledger Orchestration.
 Phase 1.4 — Active Orchestration (v2: corrected PoC bounds, EMA weighting)
 """
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import threading
 import time
@@ -21,7 +21,7 @@ from flwr.common import (
     Parameters,
 )
 
-from blockchain import fetch_client_history
+from core.blockchain import fetch_client_history
 
 
 # ---------------------------------------------------------------------------

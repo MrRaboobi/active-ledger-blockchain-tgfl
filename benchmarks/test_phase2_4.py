@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), "."))
 
@@ -8,18 +8,19 @@ from unittest.mock import patch
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
-from client import FLClient
-from blockchain import BlockchainManager
-from server import start_approval_daemon
+from core.client import FLClient
+from core.blockchain import BlockchainManager
+from core.server import start_approval_daemon
+import numpy as np
 
 class DummyDataset(Dataset):
     def __init__(self):
         self.data = []
         self.labels = []
-        self.data.extend([torch.randn(10) for _ in range(300)])
+        self.data.extend([torch.randn(360) for _ in range(300)])
         self.labels.extend([0 for _ in range(300)])
         for lbl in [1, 3, 4]:
-            self.data.extend([torch.randn(10) for _ in range(50)])
+            self.data.extend([torch.randn(360) for _ in range(50)])
             self.labels.extend([lbl for _ in range(50)])
 
     def __len__(self):
@@ -31,7 +32,7 @@ class DummyDataset(Dataset):
 class DummyModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.linear = nn.Linear(10, 5)
+        self.linear = nn.Linear(360, 5)
 
     def forward(self, x):
         return self.linear(x)
@@ -82,10 +83,15 @@ def main():
          patch('client.evaluate', return_value={"accuracy": 1.0, "loss": 0.1, "f1": 1.0}):
         client.fit(parameters=parameters, config={})
         
-    print("Phase 2.2 Test Completed Successfully! Handshake verified with background daemon.")
-    
+    print("Stopping Server Daemon...")
     stop_daemon.set()
     daemon_thread.join()
+    
+    total_reqs = blockchain.contract.functions.getTotalSyntheticRequests().call()
+    req = blockchain.get_synthetic_request(total_reqs - 1)
+    assert req['generated'] == True, f"Failed to mark synthetic data as generated in smart contract! Req ID {total_reqs-1} status: {req}"
+    
+    print("[SUCCESS] Phase 2.4 complete: Full generative loop verified.")
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Download MIT-BIH Arrhythmia Dataset
 """
 
@@ -8,7 +8,7 @@ from pathlib import Path
 from tqdm import tqdm
 import sys
 sys.path.append(str(Path(__file__).parent))
-from utils import load_config
+from core.utils import load_config
 
 def download_mitbih():
     """Download MIT-BIH dataset"""

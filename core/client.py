@@ -5,7 +5,7 @@ Phase 1.4 — Malicious Client Simulation
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import time
 import numpy as np
@@ -22,8 +22,8 @@ from flwr.common import (
     parameters_to_ndarrays,
 )
 
-from model import create_model, CNNLSTM
-from train_utils import train_epoch, evaluate
+from core.model import create_model, CNNLSTM
+from core.train_utils import train_epoch, evaluate
 
 
 class FLClient(fl.client.NumPyClient):
@@ -50,6 +50,8 @@ class FLClient(fl.client.NumPyClient):
         is_malicious: bool = False,
         blockchain_manager=None,
         enable_synthetic: bool = False,
+        diffusion_steps: int = 2,
+        synthetic_quantity: int = 2,
     ):
         self.client_id = client_id
         self.model = deepcopy(model)
@@ -61,7 +63,9 @@ class FLClient(fl.client.NumPyClient):
         self.device = torch.device("cpu")
         self.model.to(self.device)
         self.enable_synthetic = enable_synthetic
-        from diffusion import ECGDiffusionGenerator
+        self.diffusion_steps = diffusion_steps
+        self.synthetic_quantity = synthetic_quantity
+        from core.diffusion import ECGDiffusionGenerator
         self.generator = ECGDiffusionGenerator()
 
     # ------------------------------------------------------------------
@@ -102,8 +106,12 @@ class FLClient(fl.client.NumPyClient):
                         if status.get('approved') == True:
                             print(f"Generation authorized for class {missing_class}")
                             
-                            synthetic_X = self.generator.generate_synthetic_ecg(class_label=int(missing_class), quantity=2, num_inference_steps=2)
-                            synthetic_y = np.full(2, int(missing_class), dtype=np.int64)
+                            synthetic_X = self.generator.generate_synthetic_ecg(
+                                class_label=int(missing_class),
+                                quantity=self.synthetic_quantity,
+                                num_inference_steps=self.diffusion_steps
+                            )
+                            synthetic_y = np.full(self.synthetic_quantity, int(missing_class), dtype=np.int64)
                             
                             old_X = torch.cat([batch[0] for batch in self.train_loader])
                             old_y = torch.cat([batch[1] for batch in self.train_loader])
@@ -115,7 +123,7 @@ class FLClient(fl.client.NumPyClient):
                             new_dataset = TensorDataset(new_X, new_y)
                             self.train_loader = DataLoader(new_dataset, batch_size=32, shuffle=True)
                             
-                            print(f"[CLIENT] Augmented local dataset with 2 synthetic samples for class {missing_class}.")
+                            print(f"[CLIENT] Augmented local dataset with {self.synthetic_quantity} synthetic samples for class {missing_class}.")
                             generated_req_ids.append(req_id)
                             break
                         

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Phase 1.5 v2 — Experiment Automation & Plotting (10-client, 15 MIT-BIH records)
 Generates:
   robustness_evaluation.pdf  — dual subplot: accuracy + round latency
@@ -18,13 +18,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils import load_config
-from model import create_model, CNNLSTM
-from train_utils import load_client_data, create_data_loaders, train_epoch, evaluate
-from blockchain import BlockchainManager, fetch_client_history
-from server import calculate_score
+from core.utils import load_config
+from core.model import create_model, CNNLSTM
+from core.train_utils import load_client_data, create_data_loaders, train_epoch, evaluate
+from core.blockchain import BlockchainManager, fetch_client_history
+from core.server import calculate_score
 
 # ── Experiment constants ──────────────────────────────────────────────────────
 NUM_ROUNDS    = 15

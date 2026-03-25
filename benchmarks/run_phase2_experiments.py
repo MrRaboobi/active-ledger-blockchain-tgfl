@@ -12,12 +12,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from sklearn.metrics import f1_score
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from train_utils import load_client_data, create_data_loaders, train_epoch, evaluate
-from model import create_model, CNNLSTM
-from utils import load_config
-from diffusion import ECGDiffusionGenerator
+from core.train_utils import load_client_data, create_data_loaders, train_epoch, evaluate
+from core.model import create_model, CNNLSTM
+from core.utils import load_config
+from core.diffusion import ECGDiffusionGenerator
 
 # ── Mocking for Speed ───────────────────────────────────────────────────────
 class IdealizedBlockchain:
@@ -164,30 +164,31 @@ def main():
     
     partitioned_dir = Path(config["data"]["partitioned_dir"])
     
-    def get_loaders():
-        ls, vls, ss = [], [], []
-        for cid in range(1, TOTAL_CLIENTS + 1):
-            try:
-                data = load_client_data(cid, str(partitioned_dir))
-                # Truncate for speed
-                data["X_train"] = data["X_train"][:100]
-                data["y_train"] = data["y_train"][:100]
-                data["X_val"] = data["X_val"][:50]
-                data["y_val"] = data["y_val"][:50]
-                
-                tl, vl = create_data_loaders(data["X_train"], data["y_train"], data["X_val"], data["y_val"], batch_size)
-                ls.append(tl); vls.append(vl); ss.append(len(data["y_train"]))
-            except:
-                data = load_client_data(1, str(partitioned_dir))
-                tl, vl = create_data_loaders(data["X_train"][:100], data["y_train"][:100], data["X_val"][:50], data["y_val"][:50], batch_size)
-                ls.append(tl); vls.append(vl); ss.append(len(data["y_train"]))
-        return ls, vls, ss
+def get_loaders_fn(config, total_clients=TOTAL_CLIENTS):
+    """Module-level function to load truncated client data loaders (importable by main.py)."""
+    partitioned_dir = Path(config["data"]["partitioned_dir"])
+    batch_size = config["training"]["batch_size"]
+    ls, vls, ss = [], [], []
+    for cid in range(1, total_clients + 1):
+        try:
+            data = load_client_data(cid, str(partitioned_dir))
+            data["X_train"] = data["X_train"][:100]
+            data["y_train"] = data["y_train"][:100]
+            data["X_val"] = data["X_val"][:50]
+            data["y_val"] = data["y_val"][:50]
+            tl, vl = create_data_loaders(data["X_train"], data["y_train"], data["X_val"], data["y_val"], batch_size)
+            ls.append(tl); vls.append(vl); ss.append(len(data["y_train"]))
+        except:
+            data = load_client_data(1, str(partitioned_dir))
+            tl, vl = create_data_loaders(data["X_train"][:100], data["y_train"][:100], data["X_val"][:50], data["y_val"][:50], batch_size)
+            ls.append(tl); vls.append(vl); ss.append(len(data["y_train"]))
+    return ls, vls, ss
 
-    l_a, vl_a, s_a = get_loaders()
+    l_a, vl_a, s_a = get_loaders_fn(config, TOTAL_CLIENTS)
     f1_a = run_simulation(config, l_a, vl_a, s_a, device, enable_synthetic=False)
     print(f"Baseline F1: {f1_a}")
     
-    l_b, vl_b, s_b = get_loaders()
+    l_b, vl_b, s_b = get_loaders_fn(config, TOTAL_CLIENTS)
     f1_b = run_simulation(config, l_b, vl_b, s_b, device, enable_synthetic=True)
     print(f"Generative F1: {f1_b}")
     
