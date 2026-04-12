@@ -1,4 +1,4 @@
-﻿"""
+"""
 Download MIT-BIH Arrhythmia Dataset
 """
 
@@ -25,8 +25,8 @@ def download_mitbih():
     # Create directory
     os.makedirs(data_dir, exist_ok=True)
     
-    # MIT-BIH record IDs — 15 records for 10-client experiment
-    test_records = [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 111, 112, 113, 114, 115]
+    # MIT-BIH record IDs — All 48 records for a comprehensive clinical dataset
+    test_records = wfdb.get_record_list('mitdb')
     
     print(f"\nDownloading {len(test_records)} test records...")
     print(f"Target directory: {os.path.abspath(data_dir)}\n")

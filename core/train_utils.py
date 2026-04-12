@@ -39,18 +39,23 @@ def create_data_loaders(X_train, y_train, X_val, y_val, batch_size=32):
     train_dataset = ECGDataset(X_train, y_train)
     val_dataset = ECGDataset(X_val, y_val)
     
+    import os
+    os_workers = 0 if os.name == 'nt' else 2
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=0  # Set to 0 for Windows compatibility
+        pin_memory=True,
+        num_workers=os_workers
     )
     
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=0
+        pin_memory=True,
+        num_workers=os_workers
     )
     
     return train_loader, val_loader

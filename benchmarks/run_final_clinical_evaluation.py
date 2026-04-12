@@ -35,27 +35,27 @@ from core.server import calculate_score, start_approval_daemon
 from core.client import FLClient
 
 # ── Clinical-grade constants ──────────────────────────────────────────────────
-NUM_ROUNDS         = 50
+NUM_ROUNDS         = 40
 NUM_NORMAL         = 8
 NUM_MALICIOUS      = 2
 TOTAL_CLIENTS      = 10
 TOP_K              = 7
-DIFFUSION_STEPS    = 50    # High-fidelity LDM inference steps
+DIFFUSION_STEPS    = 30    # Optimised LDM inference steps (1D ECG converges fast)
 SYNTHETIC_QUANTITY = 500   # Aggressive class rebalancing per minority class
 GANACHE_URL        = "http://127.0.0.1:8545"
 CHECKPOINT_DIR     = Path("checkpoints")
 CHECKPOINT_EVERY   = 10   # Save global model every N rounds
+DIFFUSION_PRETRAIN_EPOCHS = 30  # Epochs to pre-train diffusion UNet on real ECG data
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 
 def _get_weights(model):
-    return [p.cpu().detach().numpy() for p in model.parameters()]
+    return [val.cpu().detach().numpy() for _, val in model.state_dict().items()]
 
 
 def _set_weights(model, weights):
-    with torch.no_grad():
-        for p, w in zip(model.parameters(), weights):
-            p.copy_(torch.tensor(w))
+    state_dict = dict(zip(model.state_dict().keys(), [torch.tensor(w) for w in weights]))
+    model.load_state_dict(state_dict, strict=True)
 
 
 def _fedavg_aggregate(global_model, client_weights_list, sizes):
@@ -133,13 +133,14 @@ def _load_all_client_data(config, device):
 def main():
     np.random.seed(42)
     torch.manual_seed(42)
+    torch.backends.cudnn.benchmark = True  # GPU acceleration for static CNN layers
 
     # ── Device selection ─────────────────────────────────────────────────────
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type == "cpu":
         print("=" * 70)
         print("⚠️  WARNING: No CUDA GPU detected. Falling back to CPU.")
-        print("   With DIFFUSION_STEPS=50 and SYNTHETIC_QUANTITY=500,")
+        print("   With DIFFUSION_STEPS=30 and SYNTHETIC_QUANTITY=500,")
         print("   this run will likely take 48-96 hours on CPU hardware.")
         print("   Strongly recommended: RTX 3060+ / A100 / L4 GPU.")
         print("=" * 70)
@@ -183,6 +184,36 @@ def main():
     print("\n[..] Loading full clinical dataset (no truncation)...")
     loaders, val_loaders, sizes = _load_all_client_data(config, device)
     print(f"[OK] Loaded {TOTAL_CLIENTS} clients. Total train samples: {sum(sizes)}")
+
+    # ── Pre-train diffusion model on real ECG data ────────────────────────
+    from core.diffusion import ECGDiffusionGenerator, PRETRAINED_PATH
+
+    if not PRETRAINED_PATH.exists():
+        print(f"\n[..] Pre-training diffusion UNet ({DIFFUSION_PRETRAIN_EPOCHS} epochs)...")
+        # Pool all client training ECG signals and labels
+        all_ecg = []
+        all_labels = []
+        for loader in loaders:
+            for X_batch, y_batch in loader:
+                all_ecg.append(X_batch.numpy())
+                all_labels.append(y_batch.numpy())
+        all_ecg = np.concatenate(all_ecg, axis=0)
+        all_labels = np.concatenate(all_labels, axis=0)
+        print(f"     Pooled {all_ecg.shape[0]} ECG signals for conditional diffusion training")
+
+        # Determine best device for diffusion training
+        diff_device = "cpu"  # safe default
+        if torch.cuda.is_available():
+            cc = torch.cuda.get_device_capability(0)
+            if cc >= (7, 0):
+                diff_device = "cuda"
+
+        gen = ECGDiffusionGenerator()
+        gen.train_on_data(all_ecg, all_labels, epochs=DIFFUSION_PRETRAIN_EPOCHS, device=diff_device)
+        gen.save_weights()
+        print(f"[OK] Diffusion model pre-trained and saved to {PRETRAINED_PATH}")
+    else:
+        print(f"\n[OK] Pre-trained diffusion weights found: {PRETRAINED_PATH}")
 
     # ── Training loop ─────────────────────────────────────────────────────────
     malicious_ids = set(range(NUM_NORMAL, TOTAL_CLIENTS))
@@ -232,8 +263,12 @@ def main():
         # ── PoC-based Top-K selection ───────────────────────────────────────
         scored = []
         for acc, w, n, cid, addr in results:
-            history = fetch_client_history(addr, blockchain.contract, blockchain.w3)
-            score   = calculate_score(history)
+            try:
+                history = fetch_client_history(addr, blockchain.contract, blockchain.w3)
+                score   = calculate_score(history)
+            except Exception as e:
+                print(f"  [warn] PoC score fetch failed cid={cid+1}: {e}. Using neutral score.")
+                score = 0.5
             scored.append((score, w, n))
 
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -249,7 +284,10 @@ def main():
         round_accs.append(mean_f1)
         print(f"  Mean F1: {mean_f1:.4f}  |  Latency: {t_elapsed:.1f}s  |  Per-class F1: {np.round(f1_now, 3)}")
 
-        # ── Checkpointing ───────────────────────────────────────────────────
+        # ── Checkpointing (Safeguards against Kaggle timeouts) ──────────────
+        np.save("checkpoints/final_f1_scores.npy", f1_now)
+        np.save("checkpoints/round_mean_f1.npy",   np.array(round_accs))
+
         if rnd % CHECKPOINT_EVERY == 0:
             _save_checkpoint(global_model, rnd)
 

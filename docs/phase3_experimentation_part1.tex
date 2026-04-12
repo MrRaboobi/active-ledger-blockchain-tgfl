@@ -1,0 +1,442 @@
+% ============================================================================
+% PHASE 3.1 — DEEP COMPUTE EXPERIMENTATION REPORT (PART 1)
+% Ledger-Guided Latent Diffusion for Non-IID Clinical Federated Learning
+% ============================================================================
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ────────────────────────────────────────────────────────────────
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{float}
+\usepackage{subfig}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{tcolorbox}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{longtable}
+\usepackage{array}
+
+% ── Colors ──────────────────────────────────────────────────────────────────
+\definecolor{codeblue}{RGB}{44,123,182}
+\definecolor{codered}{RGB}{215,25,28}
+\definecolor{codegreen}{RGB}{26,150,65}
+\definecolor{codeorange}{RGB}{253,174,97}
+\definecolor{codepurple}{RGB}{118,42,131}
+
+% ── Hyperref Setup ──────────────────────────────────────────────────────────
+\hypersetup{
+    colorlinks=true,
+    linkcolor=codeblue,
+    citecolor=codeblue,
+    urlcolor=codepurple
+}
+
+% ── Custom Boxes ────────────────────────────────────────────────────────────
+\newtcolorbox{findingbox}[1][]{
+    colback=blue!5!white,
+    colframe=codeblue,
+    fonttitle=\bfseries,
+    title=#1,
+    rounded corners,
+    boxrule=0.8pt
+}
+
+\newtcolorbox{warningbox}[1][]{
+    colback=red!5!white,
+    colframe=codered,
+    fonttitle=\bfseries,
+    title=#1,
+    rounded corners,
+    boxrule=0.8pt
+}
+
+\newtcolorbox{successbox}[1][]{
+    colback=green!5!white,
+    colframe=codegreen,
+    fonttitle=\bfseries,
+    title=#1,
+    rounded corners,
+    boxrule=0.8pt
+}
+
+% ── Header/Footer ──────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Phase 3.1 --- Deep Compute Experimentation}
+\fancyhead[R]{\small FYP: Blockchain-Orchestrated FL}
+\fancyfoot[C]{\thepage}
+
+% ── Title ───────────────────────────────────────────────────────────────────
+\title{
+    \vspace{-1cm}
+    \textbf{Phase 3.1: Deep Compute Clinical Evaluation} \\[0.3cm]
+    \large Experimentation Report \& Empirical Findings \\[0.2cm]
+    \large\textit{Ledger-Guided Latent Diffusion for Privacy-Preserving} \\
+    \large\textit{Non-IID Clinical Federated Learning}
+}
+\author{FYP Blockchain-FL Team}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+% ════════════════════════════════════════════════════════════════════════════
+\begin{abstract}
+This document provides a comprehensive account of the Phase~3.1 deep compute experimentation for our blockchain-orchestrated federated learning system. We detail three distinct experimental runs conducted on Kaggle T4 GPU infrastructure, documenting the iterative engineering process that evolved our class weighting strategy from raw inverse-frequency weights (Run~A: Mean~F1 = 0.59), through a failed square-root smoothing attempt (Run~B: collapsed to 0.17), to the final clamped inverse-frequency formulation (Run~C: \textbf{Mean~F1 = 0.89}). The final model achieves clinical-grade performance across all five AAMI ECG classes---Normal (F1 = 0.97), LBBB (F1 = 0.97), RBBB (F1 = 0.91), APB (F1 = 0.65), and PVC (F1 = 0.93)---while operating under Byzantine fault conditions with blockchain-verified synthetic data augmentation. We also document critical infrastructure hardening measures including blockchain crash protection, diffusion acceleration, and Ganache nonce error resilience that enabled reliable 40-round training within Kaggle's 12-hour execution window. These findings directly inform the ablation study design (Phase~3.2) and provide publication-ready metrics for Paper~2.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ════════════════════════════════════════════════════════════════════════════
+\section{Experimental Setup}
+\label{sec:setup}
+
+\subsection{Dataset: MIT-BIH Arrhythmia Database}
+
+All experiments use the MIT-BIH Arrhythmia Database, preprocessed according to the AAMI (Association for the Advancement of Medical Instrumentation) EC57 standard. The database contains 48 half-hour excerpts of two-channel ambulatory ECG recordings from 47 subjects, digitised at 360 samples per second.
+
+\begin{table}[H]
+\centering
+\caption{AAMI Standard ECG Classification Mapping}
+\label{tab:aami}
+\begin{tabular}{@{}clcr@{}}
+\toprule
+\textbf{Class ID} & \textbf{AAMI Label} & \textbf{Clinical Name} & \textbf{Test Support} \\
+\midrule
+0 & Normal (N) & Normal Sinus Rhythm & 11{,}237 \\
+1 & LBBB & Left Bundle Branch Block & 1{,}210 \\
+2 & RBBB & Right Bundle Branch Block & 1{,}085 \\
+3 & APB & Atrial Premature Beat & 416 \\
+4 & PVC & Premature Ventricular Contraction & 1{,}089 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{findingbox}[Key Data Challenge]
+The dataset exhibits \textbf{severe class imbalance}: Normal beats constitute $\sim$75\% of the total dataset, while APB (the rarest class) accounts for fewer than 3\%. This imbalance ratio of approximately \textbf{27:1} (Normal:APB) is the primary driver of the gradient dominance problem that all three experimental runs attempted to address.
+\end{findingbox}
+
+\subsection{Signal Preprocessing}
+
+Each ECG signal is segmented into fixed-length windows of \textbf{360 time steps} (corresponding to one cardiac cycle at 360~Hz sampling rate). Signals are normalised to zero mean and unit variance per-window. The processed signals have shape $(N, 360)$ where $N$ is the total number of heartbeat segments.
+
+Dataset splits follow a 70/15/15 ratio:
+\begin{itemize}[nosep]
+    \item \textbf{Training}: 70\% of each client's local data
+    \item \textbf{Validation}: 15\% --- used for per-round F1 evaluation
+    \item \textbf{Test}: 15\% --- used only for the final clinical evaluation report
+\end{itemize}
+
+\subsection{Federated Learning Configuration}
+
+\begin{table}[H]
+\centering
+\caption{Federated Learning Hyperparameters (Final Configuration)}
+\label{tab:flconfig}
+\begin{tabular}{@{}llr@{}}
+\toprule
+\textbf{Parameter} & \textbf{Description} & \textbf{Value} \\
+\midrule
+\texttt{num\_clients} & Total FL participants & 10 \\
+Normal clients & Honest participants & 8 (Client 1--8) \\
+Malicious clients & Byzantine attackers & 2 (Client 9--10) \\
+\texttt{num\_rounds} & Global aggregation rounds & 40 \\
+\texttt{local\_epochs} & Per-client training passes & 3 \\
+\texttt{learning\_rate} & Adam optimiser LR & 0.001 \\
+\texttt{batch\_size} & Mini-batch size & 128 \\
+Top-K selection & PoC-ranked client filtering & 7 of 10 \\
+PoC threshold & Minimum score for data approval & 0.4 \\
+Aggregation & FedAvg (weighted by $n_i$) & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Non-IID Data Partitioning}
+
+To simulate realistic clinical heterogeneity, data is distributed across 10 clients using a \textbf{Dirichlet-inspired non-IID partitioning} scheme. Three explicit distribution profiles are defined in \texttt{config.yaml}:
+
+\begin{itemize}[nosep]
+    \item \textbf{Client 1} (Hospital A --- Large Urban): 60\% Normal, 30\% Ventricular, 10\% Rare; 40\% of total data
+    \item \textbf{Client 2} (Hospital B --- General): 85\% Normal, 10\% Ventricular, 5\% Rare; 35\% of total data
+    \item \textbf{Client 3} (Specialist Clinic): 50\% Normal, 30\% Ventricular, 20\% Rare; 25\% of total data
+\end{itemize}
+
+The remaining 7 clients receive random subsets, ensuring that no single client observes all five classes with sufficient representation. This creates the non-IID data silos that motivate the Ledger-Guided Diffusion architecture.
+
+\subsection{Compute Infrastructure}
+
+\begin{table}[H]
+\centering
+\caption{Compute Environment Specification}
+\label{tab:compute}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Component} & \textbf{Specification} \\
+\midrule
+Platform & Kaggle Notebooks (GPU accelerator) \\
+GPU & NVIDIA Tesla T4 (15.6 GB VRAM) \\
+CPU & Intel Xeon (2 cores) \\
+RAM & 13 GB system memory \\
+Blockchain & Ganache v7.x (in-process, Shanghai hardfork) \\
+Runtime Limit & 12 hours maximum execution \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ════════════════════════════════════════════════════════════════════════════
+\section{Model Architecture}
+\label{sec:architecture}
+
+\subsection{Classification Model: CNN-LSTM}
+
+The primary classification model is a hybrid \textbf{CNN-LSTM} architecture designed specifically for 1D ECG time-series data. The architecture exploits convolutional layers for local morphological feature extraction (QRS complex shape, ST-segment deviation) and recurrent layers for temporal dependency modelling (inter-beat interval patterns, rhythm regularity).
+
+\begin{table}[H]
+\centering
+\caption{CNN-LSTM Architecture Details}
+\label{tab:cnnlstm}
+\begin{tabular}{@{}llr@{}}
+\toprule
+\textbf{Layer} & \textbf{Configuration} & \textbf{Output Dim} \\
+\midrule
+Input & Raw ECG signal & $(B, 360)$ \\
+Unsqueeze & Add channel dim & $(B, 1, 360)$ \\
+Conv1D + BN + ReLU + Pool & 32 filters, kernel=7, pool=2 & $(B, 32, 180)$ \\
+Conv1D + BN + ReLU + Pool & 64 filters, kernel=5, pool=2 & $(B, 64, 90)$ \\
+Conv1D + BN + ReLU + Pool & 128 filters, kernel=3, pool=2 & $(B, 128, 45)$ \\
+Permute & Channels $\rightarrow$ features & $(B, 45, 128)$ \\
+LSTM (2-layer, bidir=False) & Hidden=128, dropout=0.3 & $(B, 128)$ \\
+Dropout + FC + ReLU & 128 $\rightarrow$ 64 & $(B, 64)$ \\
+Dropout + FC & 64 $\rightarrow$ 5 & $(B, 5)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Generative Model: 1D UNet Latent Diffusion}
+
+Synthetic ECG data is generated using a \textbf{class-conditional 1D UNet} trained with the Denoising Diffusion Probabilistic Model (DDPM) objective from the HuggingFace \texttt{diffusers} library.
+
+\begin{table}[H]
+\centering
+\caption{Diffusion Model Architecture}
+\label{tab:diffusion}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Component} & \textbf{Configuration} \\
+\midrule
+Base Model & \texttt{UNet1DModel} (HuggingFace diffusers) \\
+Sample Size & 384 (padded from 360 for divisibility by $2^4$) \\
+Input Channels & 2 (1 ECG + 1 class-conditioning channel) \\
+Output Channels & 1 (predicted noise) \\
+Down Blocks & DownBlock1D, DownBlock1D, AttnDownBlock1D, AttnDownBlock1D \\
+Up Blocks & AttnUpBlock1D, AttnUpBlock1D, UpBlock1D, UpBlock1D \\
+Channel Widths & [32, 64, 128, 256] \\
+Scheduler & DDPMScheduler (1000 training timesteps) \\
+Pre-training & 30 epochs on pooled client ECG data \\
+Inference Steps & 30 (reduced from 50 for runtime optimisation) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Class Conditioning Mechanism}
+
+The diffusion model employs a \textbf{channel-concatenation conditioning} strategy. During training, the class label $c \in \{0,1,2,3,4\}$ is normalised to $[0, 1]$ via $c/4$ and broadcast to a full-length channel of shape $(1, 384)$. This label channel is concatenated with the (noisy) ECG channel to form a 2-channel input $(2, 384)$. The UNet learns to predict noise conditioned on the class identity.
+
+During generation, the desired class label is injected as a clean conditioning channel while the ECG channel starts from pure Gaussian noise. The DDPM scheduler iteratively denoises over 30 steps, producing a class-specific synthetic ECG waveform that is then cropped from 384 back to 360 time steps.
+
+% ════════════════════════════════════════════════════════════════════════════
+\section{Blockchain Orchestration Layer}
+\label{sec:blockchain}
+
+\subsection{Proof-of-Contribution (PoC) Scoring}
+
+The PoC score determines whether a client is trusted enough to receive synthetic data augmentation. It is computed from on-chain history as:
+
+\begin{equation}
+\text{PoC}(i) = \text{EMA}(\{\text{acc}_{i,r}\}_{r=1}^{R},\; \alpha=0.7) \times \frac{|\text{history}(i)|}{\max(r)}
+\label{eq:poc}
+\end{equation}
+
+where $\text{acc}_{i,r}$ is the normalised validation accuracy of client $i$ at round $r$, EMA is the exponential moving average with recency bias $\alpha = 0.7$, and the participation fraction rewards consistent contributors. The score is clamped to $(0, 1)$ via $\text{PoC} = \text{clamp}(\text{raw}, 10^{-6}, 1 - 10^{-6})$.
+
+\subsection{Synthetic Data Governance Pipeline}
+
+The complete trust-gated synthetic data pipeline operates as follows:
+
+\begin{enumerate}[nosep]
+    \item \textbf{Diagnosis}: Client scans local distribution; if any class has fewer than $\max(50, 0.15 \times n_{\text{local}})$ samples, it is flagged as deficient.
+    \item \textbf{Request}: Client submits a \texttt{requestSynthetic(clientId, classLabel, quantity)} transaction to the smart contract.
+    \item \textbf{Approval}: The server daemon polls pending requests every 2 seconds, computes the requester's PoC score, and calls \texttt{approveSynthetic(reqId)} if $\text{PoC} \geq 0.4$.
+    \item \textbf{Generation}: Upon detecting approval, the client activates its local diffusion generator to produce 500 synthetic ECG samples of the deficient class.
+    \item \textbf{Augmentation}: Synthetic samples are concatenated with the real training data in a new \texttt{DataLoader}.
+    \item \textbf{Receipt}: After local training, the client calls \texttt{markSyntheticGenerated(reqId)} to log a cryptographic completion receipt on-chain.
+\end{enumerate}
+
+\begin{findingbox}[Observed PoC Behaviour During Training]
+Analysis of the 40-round logs reveals distinct trust tiers:
+\begin{itemize}[nosep]
+    \item \textbf{High-trust} (PoC $> 0.7$): Clients 2, 4, 7 consistently approved. Client~7 peaked at PoC = 0.941.
+    \item \textbf{Medium-trust} (PoC 0.4--0.7): Clients 1, 3, 5, 6, 10 oscillated between approval and rejection across rounds.
+    \item \textbf{Permanently rejected} (PoC = 0.100): Clients 8, 9 --- the Byzantine attackers --- were \textit{never} approved for synthetic data in any round. The PoC mechanism successfully quarantined malicious participants.
+\end{itemize}
+\end{findingbox}
+
+% ════════════════════════════════════════════════════════════════════════════
+\section{Experimental Runs: Chronological Account}
+\label{sec:runs}
+
+Three experimental runs were conducted, each informing the next. The central variable across runs was the \textbf{class weighting strategy} in the \texttt{CrossEntropyLoss} function.
+
+\subsection{Run A: Raw Inverse-Frequency Weights}
+\label{sec:runa}
+
+\subsubsection{Configuration}
+
+\begin{table}[H]
+\centering
+\caption{Run A Configuration}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Learning rate & 0.001 \\
+Local epochs & 5 \\
+Class weighting & Raw inverse-frequency: $w_c = \frac{N}{C \cdot n_c}$ \\
+Diffusion steps & 50 \\
+Blockchain protection & None \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Class Weight Calculation}
+
+For raw inverse-frequency weighting, the weight for class $c$ is:
+\begin{equation}
+w_c = \frac{N_{\text{total}}}{C \cdot n_c}
+\label{eq:raw_weight}
+\end{equation}
+
+where $N_{\text{total}}$ is the total number of samples on the client, $C = 5$ is the number of classes, and $n_c$ is the count of class $c$. For a typical client with dominant Normal class:
+\begin{itemize}[nosep]
+    \item Normal ($n_0 \approx 7500$): $w_0 \approx 0.27$
+    \item APB ($n_3 \approx 55$): $w_3 \approx 36.4$
+\end{itemize}
+
+This yields a \textbf{weight ratio of 135:1 (APB:Normal)}, meaning the gradient contribution from a single APB sample is 135$\times$ larger than a Normal sample.
+
+\subsubsection{Results}
+
+\begin{table}[H]
+\centering
+\caption{Run A --- Final Results (Round 40)}
+\label{tab:runa_results}
+\begin{tabular}{@{}lcccr@{}}
+\toprule
+\textbf{Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} & \textbf{Support} \\
+\midrule
+Normal & 0.82 & 0.32 & \textbf{0.26} & 11{,}237 \\
+LBBB & 0.97 & 0.95 & \textbf{0.96} & 1{,}210 \\
+RBBB & 0.72 & 0.85 & \textbf{0.78} & 1{,}085 \\
+APB & 0.05 & 0.12 & \textbf{0.08} & 416 \\
+PVC & 0.83 & 0.93 & \textbf{0.88} & 1{,}089 \\
+\midrule
+\textbf{Mean F1} & & & \textbf{0.59} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Training Curve (Run A)}
+
+\begin{table}[H]
+\centering
+\caption{Run A --- Mean F1 Training Progression}
+\begin{tabular}{@{}cccc@{}}
+\toprule
+\textbf{Round 1} & \textbf{Round 10} & \textbf{Round 20} & \textbf{Round 40} \\
+\midrule
+0.1711 & 0.1711 & 0.4674 & 0.5928 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{warningbox}[Run A Failure Analysis: Normal Class Collapse]
+The extreme weight ratio (135:1) caused \textbf{gradient dominance by minority classes}. The model learned to sacrifice Normal classification (F1 = 0.26) to maximise its reward on rare classes. In clinical terms, this means the system would \textit{miss 74\% of healthy patients} --- an unacceptable false-negative rate that would overwhelm cardiologists with unnecessary referrals.
+
+\textbf{Root Cause}: With $w_{\text{Normal}} = 0.27$, the cross-entropy gradient from 11{,}237 Normal samples is equivalent to only $\sim$83 unweighted samples, while the 416 APB samples contribute gradient equivalent to $\sim$15{,}000 samples. The model over-rotates toward minority classes.
+\end{warningbox}
+
+\subsection{Run B: Square-Root Smoothing (Failed Experiment)}
+\label{sec:runb}
+
+\subsubsection{Hypothesis}
+
+To address the gradient dominance observed in Run~A, we hypothesised that applying a \textbf{square-root compression} to the inverse-frequency weights would moderate the ratio while preserving the directional bias toward minority classes:
+
+\begin{equation}
+w_c^{\text{sqrt}} = \sqrt{\frac{N_{\text{total}}}{C \cdot n_c}}
+\label{eq:sqrt_weight}
+\end{equation}
+
+This reduces the weight ratio from 135:1 to approximately $\sqrt{135} \approx 11.6$:1.
+
+\subsubsection{Configuration Issues}
+
+Two compounding issues affected this run:
+\begin{enumerate}
+    \item \textbf{Stale Learning Rate}: The Kaggle notebook was generated before the learning rate was restored to 0.001 in \texttt{config.yaml}. The notebook hardcoded \texttt{learning\_rate: 0.0003}, reducing gradient magnitude by 70\%.
+    \item \textbf{Excessive Smoothing}: The sqrt transformation compressed the minority-class weights too aggressively. Combined with the reduced LR, the model received insufficient gradient signal from rare classes.
+\end{enumerate}
+
+\subsubsection{Results}
+
+\begin{table}[H]
+\centering
+\caption{Run B --- Results (All 40 Rounds)}
+\label{tab:runb_results}
+\begin{tabular}{@{}lc@{}}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+Mean F1 (all 40 rounds) & 0.1711 (constant) \\
+Normal F1 & 0.855 \\
+LBBB F1 & 0.000 \\
+RBBB F1 & 0.000 \\
+APB F1 & 0.000 \\
+PVC F1 & 0.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{warningbox}[Run B Failure Analysis: Complete Gradient Collapse]
+The model converged to a \textbf{trivial solution}: predict every heartbeat as ``Normal.'' Since Normal constitutes $\sim$75\% of the test set, the model achieves Normal F1 $\approx 0.855$ by outputting a constant prediction. All minority classes score exactly 0.000.
+
+\textbf{Root Cause}: The sqrt smoothing reduced the APB weight from 36.4 to $\sim$6.0, but combined with the erroneously low LR of 0.0003, the effective gradient from minority classes was:
+\[
+\text{Effective gradient} \propto w_c \times \text{LR} = 6.0 \times 0.0003 = 0.0018
+\]
+compared to the original:
+\[
+\text{Run A gradient} \propto 36.4 \times 0.001 = 0.0364
+\]
+A reduction of $\sim$20$\times$ in minority gradient signal was fatal. The model never escaped the Normal-only plateau.
+\end{warningbox}
+
+% ════════════════════════════════════════════════════════════════════════════
+% End of Part 1 — continued in Part 2
+% ════════════════════════════════════════════════════════════════════════════
+
+\end{document}

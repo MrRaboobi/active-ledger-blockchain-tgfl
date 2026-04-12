@@ -1,4 +1,4 @@
-﻿"""
+"""
 Preprocess ECG Data
 Segment into heartbeats, normalize, and save
 """
@@ -12,22 +12,19 @@ import sys
 sys.path.append(str(Path(__file__).parent))
 from core.utils import load_config
 
-# Annotation mapping to classes
+# Annotation mapping to exactly match evaluation script classes
 ANNOTATION_MAP = {
     'N': 0,  # Normal
-    'L': 0,  # Left bundle branch block
-    'R': 0,  # Right bundle branch block
-    'A': 1,  # Atrial premature
-    'a': 1,  # Aberrated atrial premature
-    'J': 1,  # Nodal premature
-    'S': 1,  # Supraventricular premature
-    'V': 2,  # Ventricular premature (PVC)
-    'F': 3,  # Fusion
-    '/': 4,  # Paced
-    'f': 4,  # Fusion of paced and normal
+    'L': 1,  # Left bundle branch block (LBBB)
+    'R': 2,  # Right bundle branch block (RBBB)
+    'A': 3,  # Atrial premature (APB)
+    'a': 3,  # Aberrated atrial premature
+    'J': 3,  # Nodal premature
+    'S': 3,  # Supraventricular premature
+    'V': 4,  # Ventricular premature (PVC)
 }
 
-CLASS_NAMES = ['Normal', 'Supraventricular', 'Ventricular', 'Fusion', 'Unknown']
+CLASS_NAMES = ['Normal', 'LBBB', 'RBBB', 'APB', 'PVC']
 
 def normalize_signal(signal):
     """Z-score normalization"""

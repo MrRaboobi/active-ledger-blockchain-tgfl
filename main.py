@@ -5,7 +5,7 @@ Usage:
     python main.py --mode baseline          --rounds 5  --clients 10
     python main.py --mode poc-only          --rounds 5  --clients 10
     python main.py --mode generative        --rounds 5  --clients 10
-    python main.py --mode clinical-compute  # 50-round GPU-scale run
+    python main.py --mode clinical-compute  # 40-round GPU-scale run
 """
 
 import argparse
@@ -30,7 +30,7 @@ def parse_args():
             "baseline          : Standard FedAvg, no PoC, no synthetic data\n"
             "poc-only          : Active-Ledger PoC selection, no augmentation\n"
             "generative        : Active-Ledger PoC + Ledger-Guided 1D LDM\n"
-            "clinical-compute  : Full 50-round GPU-scale clinical evaluation "
+            "clinical-compute  : Full 40-round GPU-scale clinical evaluation "
             "(DIFFUSION_STEPS=50, SYNTHETIC_QUANTITY=500)"
         ),
     )
@@ -92,7 +92,7 @@ def run_generative(rounds: int, clients: int):
 
 
 def run_clinical_compute(rounds: int, clients: int):
-    """Flagship 50-round GPU-scale clinical evaluation with LDM data augmentation."""
+    """Flagship 40-round GPU-scale clinical evaluation with LDM data augmentation."""
     print("[MODE] Clinical Compute — delegating to benchmarks/run_final_clinical_evaluation.py")
     from benchmarks.run_final_clinical_evaluation import main as clinical_main
     clinical_main()
