@@ -1,4 +1,4 @@
-﻿"""
+"""
 Flower Server Strategy — Proof-of-Contribution (PoC) Active-Ledger Orchestration.
 Phase 1.4 — Active Orchestration (v2: corrected PoC bounds, EMA weighting)
 """
@@ -99,11 +99,15 @@ def calculate_score(history: List[Dict]) -> float:
 # ---------------------------------------------------------------------------
 # Approval Daemon
 # ---------------------------------------------------------------------------
-def start_approval_daemon(blockchain, eth_accounts, stop_event, check_interval=2.0):
+def start_approval_daemon(blockchain, eth_accounts, stop_event, check_interval=2.0, mode='poc'):
     """
     Background daemon running on the server to approve synthetic data requests.
+
+    Args:
+        mode: 'poc' (default) — approve only if PoC score >= 0.4.
+              'blind'          — auto-approve EVERY pending request (no PoC check).
     """
-    print("[SERVER DAEMON] Started background approval daemon.")
+    print(f"[SERVER DAEMON] Started background approval daemon (mode={mode}).")
     processed_rejections = set()
     while not stop_event.is_set():
         try:
@@ -114,19 +118,26 @@ def start_approval_daemon(blockchain, eth_accounts, stop_event, check_interval=2
                 req = blockchain.get_synthetic_request(i)
                 if not req['approved'] and not req['generated']:
                     client_id = req['client_id']
-                    addr_idx = int(client_id) % len(eth_accounts)
-                    eth_addr = eth_accounts[addr_idx]
-                    
-                    history = fetch_client_history(eth_addr, blockchain.contract, blockchain.w3)
-                    score = calculate_score(history)
-                    
-                    if score >= 0.4:
+
+                    if mode == 'blind':
+                        # ── Blind mode: auto-approve without PoC check ──
                         blockchain.approve_synthetic(i)
-                        print(f"[SERVER DAEMON] Approved request ID {i} for Client {client_id} (PoC: {score:.3f})")
+                        print(f"[SERVER DAEMON] BLIND-approved request ID {i} for Client {client_id}")
                     else:
-                        if i not in processed_rejections:
-                            print(f"[SERVER DAEMON] Rejected request ID {i} for Client {client_id} (PoC: {score:.3f})")
-                            processed_rejections.add(i)
+                        # ── PoC mode: verify reputation before approval ──
+                        addr_idx = int(client_id) % len(eth_accounts)
+                        eth_addr = eth_accounts[addr_idx]
+
+                        history = fetch_client_history(eth_addr, blockchain.contract, blockchain.w3)
+                        score = calculate_score(history)
+
+                        if score >= 0.4:
+                            blockchain.approve_synthetic(i)
+                            print(f"[SERVER DAEMON] Approved request ID {i} for Client {client_id} (PoC: {score:.3f})")
+                        else:
+                            if i not in processed_rejections:
+                                print(f"[SERVER DAEMON] Rejected request ID {i} for Client {client_id} (PoC: {score:.3f})")
+                                processed_rejections.add(i)
         except Exception as e:
             pass
         time.sleep(check_interval)
@@ -156,6 +167,7 @@ class PoCFedAvg(FedAvg):
         web3_instance,
         eth_accounts: List[str],
         top_k_fraction: float = 0.8,
+        use_poc: bool = True,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -163,6 +175,7 @@ class PoCFedAvg(FedAvg):
         self.web3_instance = web3_instance
         self.eth_accounts = eth_accounts
         self.top_k_fraction = top_k_fraction
+        self.use_poc = use_poc
 
     # ------------------------------------------------------------------
     def configure_fit(
@@ -174,12 +187,19 @@ class PoCFedAvg(FedAvg):
         """
         Override configure_fit to rank available clients by PoC score and
         select only the top-K fraction.
+
+        When ``self.use_poc`` is False the PoC ranking is skipped and ALL
+        available clients are selected (ablation mode).
         """
         config  = {"local_epochs": 1, "server_round": server_round}
         fit_ins = FitIns(parameters, config)
 
         sample_size = max(1, int(client_manager.num_available()))
         clients     = client_manager.sample(num_clients=sample_size)
+
+        if not self.use_poc:
+            # ── Ablation: select ALL clients, no PoC ranking ──
+            return [(proxy, fit_ins) for proxy in clients]
 
         scored: List[Tuple[float, ClientProxy]] = []
         for proxy in clients:

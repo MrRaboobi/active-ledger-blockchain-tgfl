@@ -24,14 +24,16 @@ def parse_args():
     )
     parser.add_argument(
         "--mode",
-        choices=["baseline", "poc-only", "generative", "clinical-compute"],
+        choices=["baseline", "poc-only", "generative", "clinical-compute",
+                 "baseline-ablation", "blind-ablation"],
         required=True,
         help=(
             "baseline          : Standard FedAvg, no PoC, no synthetic data\n"
             "poc-only          : Active-Ledger PoC selection, no augmentation\n"
             "generative        : Active-Ledger PoC + Ledger-Guided 1D LDM\n"
-            "clinical-compute  : Full 40-round GPU-scale clinical evaluation "
-            "(DIFFUSION_STEPS=50, SYNTHETIC_QUANTITY=500)"
+            "clinical-compute  : Full 40-round GPU-scale clinical evaluation\n"
+            "baseline-ablation : [Ablation 1A] Standard FedAvg — no PoC, no diffusion\n"
+            "blind-ablation    : [Ablation 2B] Blind Diffusion — diffusion ON, no PoC gating"
         ),
     )
     parser.add_argument(
@@ -98,6 +100,20 @@ def run_clinical_compute(rounds: int, clients: int):
     clinical_main()
 
 
+def run_baseline_ablation(rounds: int, clients: int):
+    """Ablation Run 1A: Standard FedAvg — no PoC, no synthetic data."""
+    print("[MODE] Ablation 1A (Standard FedAvg) — delegating to benchmarks/run_1A_standard_fedavg.py")
+    from benchmarks.run_1A_standard_fedavg import main as run_1a_main
+    run_1a_main()
+
+
+def run_blind_ablation(rounds: int, clients: int):
+    """Ablation Run 2B: Blind Diffusion — diffusion ON, no PoC gating."""
+    print("[MODE] Ablation 2B (Blind Diffusion) — delegating to benchmarks/run_2B_blind_diffusion.py")
+    from benchmarks.run_2B_blind_diffusion import main as run_2b_main
+    run_2b_main()
+
+
 def main():
     args = parse_args()
 
@@ -106,6 +122,8 @@ def main():
         "poc-only":          run_poc_only,
         "generative":        run_generative,
         "clinical-compute":  run_clinical_compute,
+        "baseline-ablation": run_baseline_ablation,
+        "blind-ablation":    run_blind_ablation,
     }
 
     try:
