@@ -48,7 +48,38 @@ import torch.nn as nn
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sklearn.metrics import f1_score, classification_report
+from sklearn.metrics import (
+    f1_score, classification_report,
+    precision_recall_fscore_support,
+)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tee Logger — writes every print() to both stdout AND a .log file
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TeeLogger:
+    """
+    Duplicates all stdout writes to a log file.
+    Usage:
+        sys.stdout = TeeLogger('session1.log')
+    """
+    def __init__(self, filepath):
+        self._terminal = sys.__stdout__
+        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+        self._log = open(filepath, 'a', buffering=1, encoding='utf-8')
+
+    def write(self, message):
+        self._terminal.write(message)
+        self._log.write(message)
+
+    def flush(self):
+        self._terminal.flush()
+        self._log.flush()
+
+    def close(self):
+        self._log.close()
+        sys.stdout = self._terminal
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -105,8 +136,21 @@ def _set_weights(model, weights):
 
 # ── Evaluation ────────────────────────────────────────────────────────────────
 
-def evaluate_f1_scores(global_model, val_loaders, device):
-    """Per-class F1 on the concatenated validation sets of all clients."""
+CLASS_NAMES = ["Normal", "LBBB", "RBBB", "APB", "PVC"]
+
+
+def evaluate_full(global_model, val_loaders, device):
+    """
+    Full evaluation returning F1, precision, recall, support, and
+    the sklearn classification_report string.
+
+    Returns:
+        f1        : np.ndarray shape (5,)  — per-class F1
+        precision : np.ndarray shape (5,)  — per-class precision
+        recall    : np.ndarray shape (5,)  — per-class recall
+        support   : np.ndarray shape (5,)  — per-class sample count
+        report    : str — full sklearn classification_report
+    """
     global_model.eval()
     all_preds, all_labels = [], []
     with torch.no_grad():
@@ -118,13 +162,25 @@ def evaluate_f1_scores(global_model, val_loaders, device):
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(y.cpu().numpy())
 
-    f1 = f1_score(all_labels, all_preds, average=None,
-                  labels=[0, 1, 2, 3, 4], zero_division=0)
-    report = classification_report(
-        all_labels, all_preds,
-        target_names=["Normal", "LBBB", "RBBB", "APB", "PVC"],
+    f1 = f1_score(
+        all_labels, all_preds, average=None,
+        labels=[0, 1, 2, 3, 4], zero_division=0,
+    )
+    precision, recall, _, support = precision_recall_fscore_support(
+        all_labels, all_preds, labels=[0, 1, 2, 3, 4],
         zero_division=0,
     )
+    report = classification_report(
+        all_labels, all_preds,
+        target_names=CLASS_NAMES,
+        zero_division=0,
+    )
+    return f1, precision, recall, support, report
+
+
+def evaluate_f1_scores(global_model, val_loaders, device):
+    """Thin wrapper kept for backwards compatibility."""
+    f1, _, _, _, report = evaluate_full(global_model, val_loaders, device)
     return f1, report
 
 
@@ -186,17 +242,21 @@ def run_one_method(
     global_model = deepcopy(global_model_init)
     global_model.to(device)
 
-    round_f1s    = []
-    round_lats   = []
-    per_class_f1 = []
-    t_method     = time.time()
+    round_f1s        = []
+    round_lats       = []
+    per_class_f1     = []   # shape: (n_rounds, 5)
+    per_class_prec   = []   # shape: (n_rounds, 5)
+    per_class_recall = []   # shape: (n_rounds, 5)
+    client_accs      = []   # shape: (n_rounds, n_clients)
+    t_method         = time.time()
 
     for rnd in range(1, NUM_ROUNDS + 1):
         t_rnd = time.time()
         print(f"\n  --- Round {rnd:3d}/{NUM_ROUNDS} [{method_name}] ---")
 
-        global_weights = _get_weights(global_model)
-        results        = []
+        global_weights  = _get_weights(global_model)
+        results         = []
+        round_client_accs = []
 
         # ── Each client trains locally (NO synthetic data for A–F) ───────────
         for cid in range(TOTAL_CLIENTS):
@@ -215,7 +275,15 @@ def run_one_method(
                 synthetic_quantity = 0,
             )
             w, n, metrics = client.fit(global_weights, config)
-            results.append((float(metrics["accuracy"]), w, n, cid))
+            acc = float(metrics["accuracy"])
+            results.append((acc, w, n, cid))
+            round_client_accs.append(acc)
+
+            flag = " [BYZANTINE]" if is_malicious else ""
+            print(f"    Client {cid+1:2d}{flag}: local_acc={acc:.4f}  "
+                  f"n_samples={n}")
+
+        client_accs.append(round_client_accs)
 
         # ── PoC-Only (method G): on-chain log + Top-7 selection ──────────────
         if blockchain is not None:
@@ -240,6 +308,7 @@ def run_one_method(
 
             # Score clients by PoC and take Top-7
             scored = []
+            poc_scores_log = []
             for acc, w, n, cid in results:
                 try:
                     history = fetch_client_history(
@@ -253,12 +322,15 @@ def run_one_method(
                           f"Using neutral score 0.5.")
                     score = 0.5
                 scored.append((score, w, n))
+                poc_scores_log.append((cid + 1, score))
 
             scored.sort(key=lambda x: x[0], reverse=True)
             top7 = scored[:7]
 
-            print(f"  [PoC-Only] Top-7 PoC scores: "
-                  f"{[round(s, 3) for s, _, _ in top7]}")
+            print(f"  [PoC-Only] All PoC scores: "
+                  f"{[(cid, round(s, 3)) for cid, s in poc_scores_log]}")
+            print(f"  [PoC-Only] Top-7 selected | "
+                  f"Scores: {[round(s, 3) for s, _, _ in top7]}")
 
             sel_weights = [w for _, w, _ in top7]
             sel_sizes   = [n for _, _, n in top7]
@@ -271,26 +343,36 @@ def run_one_method(
             global_model = agg_fn(global_model, all_weights, all_sizes,
                                   **agg_kwargs)
 
-        # ── Evaluate ──────────────────────────────────────────────────────────
-        f1_now, _ = evaluate_f1_scores(global_model, val_loaders, device)
+        # ── Full evaluation (F1 + precision + recall + report) ───────────────
+        f1_now, prec_now, rec_now, sup_now, report_now = \
+            evaluate_full(global_model, val_loaders, device)
         mean_f1   = float(np.mean(f1_now))
         t_elapsed = time.time() - t_rnd
+
         round_f1s.append(mean_f1)
         round_lats.append(t_elapsed)
         per_class_f1.append(f1_now.tolist())
+        per_class_prec.append(prec_now.tolist())
+        per_class_recall.append(rec_now.tolist())
 
-        print(f"  Mean F1: {mean_f1:.4f}  |  Latency: {t_elapsed:.1f}s  |  "
-              f"Per-class: {np.round(f1_now, 3)}")
+        print(f"  Mean F1: {mean_f1:.4f}  |  Latency: {t_elapsed:.1f}s")
+        print(f"  Per-class F1       : {np.round(f1_now, 4)}")
+        print(f"  Per-class Precision: {np.round(prec_now, 4)}")
+        print(f"  Per-class Recall   : {np.round(rec_now, 4)}")
+        print(f"  Support            : {sup_now}")
 
         # ── Incremental checkpoint (Kaggle crash protection) ──────────────────
         CHECKPOINT_DIR.mkdir(exist_ok=True)
         np.save(
             CHECKPOINT_DIR / f"partial_{method_name}.npy",
             {
-                "round_f1":    np.array(round_f1s),
-                "round_lat":   np.array(round_lats),
-                "per_class":   np.array(per_class_f1),
-                "rounds_done": rnd,
+                "round_f1":        np.array(round_f1s),
+                "round_lat":       np.array(round_lats),
+                "per_class_f1":    np.array(per_class_f1),
+                "per_class_prec":  np.array(per_class_prec),
+                "per_class_recall":np.array(per_class_recall),
+                "client_accs":     np.array(client_accs),
+                "rounds_done":     rnd,
             },
         )
 
@@ -299,19 +381,51 @@ def run_one_method(
             torch.save(global_model.state_dict(), ckpt)
             print(f"  [CHECKPOINT] Model saved → {ckpt}")
 
-    # Final model checkpoint
+    # ── Final full evaluation with classification report ──────────────────────
+    f1_final, prec_final, rec_final, sup_final, report_final = \
+        evaluate_full(global_model, val_loaders, device)
+
+    # Save final model
     final_ckpt = CHECKPOINT_DIR / f"model_{method_name}_final.pth"
     torch.save(global_model.state_dict(), final_ckpt)
 
+    # Save classification report to text file
+    report_path = CHECKPOINT_DIR / f"report_{method_name}.txt"
+    with open(report_path, "w") as rf:
+        rf.write(f"Method: {method_name}\n")
+        rf.write(f"Rounds: {NUM_ROUNDS}\n")
+        rf.write(f"Final Mean F1: {float(np.mean(f1_final)):.4f}\n")
+        rf.write("\n" + "=" * 50 + "\n")
+        rf.write("FINAL CLASSIFICATION REPORT\n")
+        rf.write("=" * 50 + "\n")
+        rf.write(report_final)
+        rf.write("\n" + "=" * 50 + "\n")
+        rf.write("PER-ROUND MEAN F1:\n")
+        for i, v in enumerate(round_f1s, 1):
+            rf.write(f"  Round {i:3d}: {v:.4f}\n")
+    print(f"  [REPORT] Saved → {report_path}")
+
     elapsed_h = (time.time() - t_method) / 3600
     print(f"\n  [{method_name}] Finished. Total time: {elapsed_h:.2f}h")
-    print(f"  [{method_name}] Final Mean F1: {round_f1s[-1]:.4f}")
+    print(f"  [{method_name}] Final Mean F1: {float(np.mean(f1_final)):.4f}")
+    print(f"\n  FINAL CLASSIFICATION REPORT [{method_name}]:")
+    print(report_final)
 
     return {
-        "round_f1":    np.array(round_f1s),
-        "round_lat":   np.array(round_lats),
-        "per_class_f1": np.array(per_class_f1),
-        "final_f1":    np.array(per_class_f1[-1]),
+        # Round-level metrics
+        "round_f1":         np.array(round_f1s),
+        "round_lat":        np.array(round_lats),
+        "per_class_f1":     np.array(per_class_f1),     # (40, 5)
+        "per_class_prec":   np.array(per_class_prec),   # (40, 5)
+        "per_class_recall": np.array(per_class_recall), # (40, 5)
+        "client_accs":      np.array(client_accs),      # (40, 10)
+        # Final-round metrics
+        "final_f1":         f1_final,                   # (5,)
+        "final_precision":  prec_final,                  # (5,)
+        "final_recall":     rec_final,                   # (5,)
+        "final_support":    sup_final,                   # (5,)
+        "final_report":     report_final,                # str
+        "elapsed_h":        elapsed_h,
     }
 
 
@@ -469,6 +583,14 @@ def main():
     np.random.seed(42)
     torch.manual_seed(42)
     torch.backends.cudnn.benchmark = True
+
+    # ── Start logging to file ─────────────────────────────────────────────────
+    CHECKPOINT_DIR.mkdir(exist_ok=True)
+    log_path = CHECKPOINT_DIR / "session1_full.log"
+    tee = TeeLogger(str(log_path))
+    sys.stdout = tee
+    print(f"[LOG] All output is being saved to: {log_path}")
+    print(f"[LOG] Session started at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
     # ── Device ───────────────────────────────────────────────────────────────
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
