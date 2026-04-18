@@ -110,6 +110,29 @@ class FLClient(fl.client.NumPyClient):
         return torch.FloatTensor(weights).to(self.device)
 
     # ------------------------------------------------------------------
+    def _generate_and_append_synthetic(self, missing_class: int):
+        synthetic_X = self.generator.generate_synthetic_ecg(
+            class_label=int(missing_class),
+            quantity=self.synthetic_quantity,
+            num_inference_steps=self.diffusion_steps
+        )
+        synthetic_y = np.full(self.synthetic_quantity, int(missing_class), dtype=np.int64)
+        
+        old_X = torch.cat([batch[0] for batch in self.train_loader])
+        old_y = torch.cat([batch[1] for batch in self.train_loader])
+        
+        new_X = torch.cat([old_X, torch.tensor(synthetic_X, dtype=torch.float32)], dim=0)
+        new_y = torch.cat([old_y, torch.tensor(synthetic_y, dtype=torch.long)], dim=0)
+        
+        from torch.utils.data import TensorDataset, DataLoader
+        new_dataset = TensorDataset(new_X, new_y)
+        import os
+        os_workers = 0 if os.name == 'nt' else 2
+        bs = self.config['training']['batch_size']
+        self.train_loader = DataLoader(new_dataset, batch_size=bs, shuffle=True, pin_memory=True, num_workers=os_workers)
+        
+        print(f"[CLIENT {self.client_id}] Augmented local dataset with {self.synthetic_quantity} synthetic samples for class {missing_class}.")
+
     def fit(
         self, parameters: NDArrays, config: Dict
     ) -> Tuple[NDArrays, int, Dict[str, Scalar]]:
@@ -120,47 +143,31 @@ class FLClient(fl.client.NumPyClient):
             total_local = sum(distribution.values())
             for missing_class, count in distribution.items():
                 threshold = max(50, 0.15 * total_local)
-                if count < threshold and self.blockchain is not None:
-                    try:
-                        req_id = self.blockchain.request_synthetic(client_id=int(self.client_id), class_label=int(missing_class), quantity=100)
-                        print(f"Client {self.client_id} requesting synthetic data for class {missing_class}")
-                        attempts = 0
-                        while True:
-                            status = self.blockchain.get_synthetic_request(req_id)
-                            if status.get('approved') == True:
-                                print(f"Generation authorized for class {missing_class}")
+                if count < threshold:
+                    if self.blockchain is not None:
+                        try:
+                            req_id = self.blockchain.request_synthetic(client_id=int(self.client_id), class_label=int(missing_class), quantity=100)
+                            print(f"Client {self.client_id} requesting synthetic data for class {missing_class}")
+                            attempts = 0
+                            while True:
+                                status = self.blockchain.get_synthetic_request(req_id)
+                                if status.get('approved') == True:
+                                    print(f"Generation authorized for class {missing_class}")
+                                    self._generate_and_append_synthetic(missing_class)
+                                    generated_req_ids.append(req_id)
+                                    break
                                 
-                                synthetic_X = self.generator.generate_synthetic_ecg(
-                                    class_label=int(missing_class),
-                                    quantity=self.synthetic_quantity,
-                                    num_inference_steps=self.diffusion_steps
-                                )
-                                synthetic_y = np.full(self.synthetic_quantity, int(missing_class), dtype=np.int64)
-                                
-                                old_X = torch.cat([batch[0] for batch in self.train_loader])
-                                old_y = torch.cat([batch[1] for batch in self.train_loader])
-                                
-                                new_X = torch.cat([old_X, torch.tensor(synthetic_X, dtype=torch.float32)], dim=0)
-                                new_y = torch.cat([old_y, torch.tensor(synthetic_y, dtype=torch.long)], dim=0)
-                                
-                                from torch.utils.data import TensorDataset, DataLoader
-                                new_dataset = TensorDataset(new_X, new_y)
-                                import os
-                                os_workers = 0 if os.name == 'nt' else 2
-                                bs = self.config['training']['batch_size']
-                                self.train_loader = DataLoader(new_dataset, batch_size=bs, shuffle=True, pin_memory=True, num_workers=os_workers)
-                                
-                                print(f"[CLIENT] Augmented local dataset with {self.synthetic_quantity} synthetic samples for class {missing_class}.")
-                                generated_req_ids.append(req_id)
-                                break
-                            
-                            attempts += 1
-                            if attempts >= 3:
-                                print(f"Client {self.client_id} request timed out/rejected. Bypassing.")
-                                break
-                            time.sleep(2)
-                    except Exception as e:
-                        print(f"  [warn] Blockchain error for Client {self.client_id} class {missing_class}: {e}. Continuing without synthetic data.")
+                                attempts += 1
+                                if attempts >= 3:
+                                    print(f"Client {self.client_id} request timed out/rejected. Bypassing.")
+                                    break
+                                time.sleep(2)
+                        except Exception as e:
+                            print(f"  [warn] Blockchain error for Client {self.client_id} class {missing_class}: {e}. Continuing without synthetic data.")
+                    else:
+                        # Blind Diffusion: no blockchain gating
+                        print(f"[BLIND LDM] Client {self.client_id} blindly synthesizing {self.synthetic_quantity} samples for class {missing_class}")
+                        self._generate_and_append_synthetic(missing_class)
 
         self.set_parameters(parameters)
 
