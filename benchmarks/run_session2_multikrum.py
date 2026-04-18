@@ -11,9 +11,9 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.utils import load_config
-from core.models import create_model
+from core.model import create_model
 from core.client import FLClient
-from benchmarks.run_phase2_experiments import _load_all_client_data
+from benchmarks.run_robust_baselines import load_all_client_data
 from core.robust_aggregation import multi_krum_aggregate
 from benchmarks.run_robust_baselines import _get_weights, _set_weights, evaluate_full, TeeLogger
 
@@ -45,7 +45,7 @@ def main():
     print(f"✅ Device: {device}")
     
     config = load_config()
-    loaders, val_loaders, sizes = _load_all_client_data(config, device)
+    loaders, val_loaders, sizes = load_all_client_data(config, device)
     
     # ── Pre-train diffusion model if needed ──────────────────────────────────
     from core.diffusion import ECGDiffusionGenerator, PRETRAINED_PATH
