@@ -21,9 +21,9 @@ from benchmarks.run_robust_baselines import _get_weights, _set_weights, evaluate
 NUM_ROUNDS         = 40
 TOTAL_CLIENTS      = 10
 NUM_MALICIOUS      = 2
-DIFFUSION_STEPS    = 20
-SYNTHETIC_QUANTITY = 200
-CHECKPOINT_EVERY   = 10
+DIFFUSION_STEPS      = 5   # Matched EXACTLY to Phase 2 successful empirical simulation
+SYNTHETIC_QUANTITY   = 20  # Matched EXACTLY to Phase 2 successful empirical simulation
+CHECKPOINT_EVERY     = 10
 CHECKPOINT_DIR     = Path("checkpoints/session2_multikrum")
 
 def main():
@@ -50,12 +50,6 @@ def main():
     
     # ── Pre-train diffusion model if needed ──────────────────────────────────
     from core.diffusion import ECGDiffusionGenerator, PRETRAINED_PATH
-    
-    # ⚠️ CRITICAL FIX: The zip upload might contain an untrained dummy diffusion_pretrained.pth.
-    # We forcefully delete it if it exists so Kaggle performs a full 30-epoch pre-training on GPU.
-    if PRETRAINED_PATH.exists():
-        print(f"[!] Purging old/dummy diffusion weights at {PRETRAINED_PATH}")
-        os.remove(PRETRAINED_PATH)
 
     if not PRETRAINED_PATH.exists():
         print(f"\n[..] Pre-training diffusion UNet (30 epochs)...")
