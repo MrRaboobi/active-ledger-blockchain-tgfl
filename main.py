@@ -5,7 +5,9 @@ Usage:
     python main.py --mode baseline          --rounds 5  --clients 10
     python main.py --mode poc-only          --rounds 5  --clients 10
     python main.py --mode generative        --rounds 5  --clients 10
-    python main.py --mode clinical-compute  # 40-round GPU-scale run
+    python main.py --mode clinical-compute  # 40-round GPU-scale run (Phase 3.1)
+    python main.py --mode blind-ablation    # 40-round blind diffusion (Phase 3.2)
+    python main.py --mode robust-baselines  # Session 1: 7-method comparison (Phase 3.2)
 """
 
 import argparse
@@ -24,14 +26,17 @@ def parse_args():
     )
     parser.add_argument(
         "--mode",
-        choices=["baseline", "poc-only", "generative", "clinical-compute"],
+        choices=[
+            "baseline", "poc-only", "generative", "clinical-compute",
+            "robust-baselines",
+        ],
         required=True,
         help=(
             "baseline          : Standard FedAvg, no PoC, no synthetic data\n"
             "poc-only          : Active-Ledger PoC selection, no augmentation\n"
             "generative        : Active-Ledger PoC + Ledger-Guided 1D LDM\n"
-            "clinical-compute  : Full 40-round GPU-scale clinical evaluation "
-            "(DIFFUSION_STEPS=50, SYNTHETIC_QUANTITY=500)"
+            "clinical-compute  : Full 40-round GPU-scale clinical evaluation\n"
+            "robust-baselines  : [Phase 3.2 Session 1] 7-method Byzantine-robust comparison"
         ),
     )
     parser.add_argument(
@@ -98,14 +103,22 @@ def run_clinical_compute(rounds: int, clients: int):
     clinical_main()
 
 
+def run_robust_baselines(rounds: int, clients: int):
+    """Phase 3.2 Session 1: 7-method Byzantine-robust aggregation comparison."""
+    print("[MODE] Robust Baselines — delegating to benchmarks/run_robust_baselines.py")
+    from benchmarks.run_robust_baselines import main as run_robust_main
+    run_robust_main()
+
+
 def main():
     args = parse_args()
 
     dispatch = {
-        "baseline":          run_baseline,
-        "poc-only":          run_poc_only,
-        "generative":        run_generative,
-        "clinical-compute":  run_clinical_compute,
+        "baseline":         run_baseline,
+        "poc-only":         run_poc_only,
+        "generative":       run_generative,
+        "clinical-compute": run_clinical_compute,
+        "robust-baselines": run_robust_baselines,
     }
 
     try:
