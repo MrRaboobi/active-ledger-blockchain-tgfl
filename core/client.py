@@ -61,7 +61,7 @@ class FLClient(fl.client.NumPyClient):
         self.config = config
         self.is_malicious = is_malicious
         self.blockchain = blockchain_manager
-        self.device = torch.device("cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
         self.enable_synthetic = enable_synthetic
         self.diffusion_steps = diffusion_steps
