@@ -1,5 +1,6 @@
 import os
 import sys
+import os
 import time
 import threading
 import torch
@@ -72,6 +73,13 @@ def main():
 
     # ── Pre-train diffusion model if needed ──────────────────────────────────
     from core.diffusion import ECGDiffusionGenerator, PRETRAINED_PATH
+
+    # ⚠️ CRITICAL FIX: The zip upload might contain an untrained dummy diffusion_pretrained.pth.
+    # We forcefully delete it if it exists so Kaggle performs a full 30-epoch pre-training on GPU.
+    if PRETRAINED_PATH.exists():
+        print(f"[!] Purging old/dummy diffusion weights at {PRETRAINED_PATH}")
+        os.remove(PRETRAINED_PATH)
+
     if not PRETRAINED_PATH.exists():
         print(f"\n[..] Pre-training diffusion UNet (30 epochs)...")
         all_ecg, all_labels = [], []
