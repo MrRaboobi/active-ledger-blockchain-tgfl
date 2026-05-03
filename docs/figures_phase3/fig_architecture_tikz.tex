@@ -1,0 +1,75 @@
+% Standalone TikZ figure body for Fig.~\ref{fig:architecture}.
+% Include from the main paper via: \input{figures_phase3/fig_architecture_tikz.tex}
+%
+% Design goals:
+% - LNCS margin-safe (wrapped in \resizebox{...}{!}{...} by the caller)
+% - Uncluttered: two horizontal flows (aggregation on top, augmentation below)
+% - Close in structure to the provided reference diagram, but with clearer spacing
+%
+\begin{tikzpicture}[
+  font=\small,
+  node distance=7mm and 10mm,
+  >=Latex,
+  box/.style={draw, rounded corners=2pt, very thick, inner sep=4.5pt, align=center, fill=white},
+  pill/.style={draw, rounded corners=18pt, thick, inner sep=4pt, align=center, fill=white},
+  group/.style={draw, rounded corners=3pt, dashed, thick, inner sep=6pt, fill=white},
+  arrow/.style={-Latex, thick},
+  garrow/.style={-Latex, thick, dashed},
+  lab/.style={font=\scriptsize, align=center, fill=white, inner sep=1.5pt}
+]
+
+% --- Column headings (three groups) -----------------------------------------
+\node[lab, text=black] (h1) {Clinical edge (non-IID)};
+\node[lab, text=black, right=58mm of h1] (h2) {Global orchestrator};
+\node[lab, text=black, right=56mm of h2] (h3) {Active-Ledger};
+
+% --- Groups (dashed containers) ---------------------------------------------
+\node[group, below=3mm of h1, minimum width=46mm, minimum height=44mm] (gEdge) {};
+\node[group, below=3mm of h2, minimum width=56mm, minimum height=44mm] (gOrch) {};
+\node[group, below=3mm of h3, minimum width=52mm, minimum height=44mm] (gLedg) {};
+
+% --- Edge nodes --------------------------------------------------------------
+\node[box, anchor=north, minimum width=38mm, minimum height=11mm] (c1) at ([yshift=-6mm]gEdge.north) {\textbf{Client 1}\\Local training + metrics};
+\node[lab, anchor=north] (dots) at ([yshift=-2mm]c1.south) {$\vdots$};
+\node[box, anchor=south, minimum width=38mm, minimum height=11mm] (cN) at ([yshift=6mm]gEdge.south) {\textbf{Client $N$}\\Local training + metrics};
+
+% --- Orchestrator nodes ------------------------------------------------------
+\node[box, anchor=north, minimum width=48mm, minimum height=11mm] (recv) at ([yshift=-6mm]gOrch.north) {\textbf{Update receiver}\\Validate dimensions};
+\node[box, below=10mm of recv, minimum width=48mm, minimum height=11mm] (poc) {\textbf{PoC engine}\\Compute trust scores};
+\node[box, anchor=south, minimum width=48mm, minimum height=11mm] (agg) at ([yshift=6mm]gOrch.south) {\textbf{Model aggregator}\\Top-$K$ average + broadcast};
+
+% --- Ledger nodes ------------------------------------------------------------
+\node[box, anchor=north, minimum width=44mm, minimum height=11mm] (sc) at ([yshift=-6mm]gLedg.north) {\textbf{Smart contract}\\Event logging + access control};
+\node[pill, anchor=south, minimum width=44mm, minimum height=14mm] (log) at ([yshift=7mm]gLedg.south) {\textbf{Immutable logs}\\Tamper-evident audit trail};
+
+% --- Top flow: aggregation ---------------------------------------------------
+\draw[arrow] (c1.east) -- node[lab, above] {1. submit\\updates} ([xshift=-2mm]recv.west);
+\draw[arrow] (cN.east) -- ([xshift=-2mm]recv.west);
+
+\draw[arrow] (recv) -- node[lab, right] {2. record\\receipt} (sc.west);
+\draw[arrow] (sc) -- node[lab, right] {3. emit\\events} (log.north);
+
+\draw[garrow] (log.west) -- node[lab, above] {4. query\\history} (poc.east);
+\draw[arrow] (poc) -- node[lab, right] {5. apply\\trust} (agg);
+
+\draw[arrow] (agg.west) -- node[lab, above] {6. broadcast\\global model} (c1.west);
+\draw[arrow] (agg.west) -- (cN.west);
+
+% --- Bottom flow: trust-gated augmentation (separate row) --------------------
+\node[box, below=19mm of gEdge.south, minimum width=38mm, minimum height=11mm] (req) {\textbf{Client}\\Detect rare-class deficit\\File request};
+\node[box, right=14mm of req, minimum width=48mm, minimum height=11mm] (gate) {\textbf{Approval daemon}\\Trust gate on PoC ($\tau=0.4$)};
+\node[box, right=14mm of gate, minimum width=44mm, minimum height=11mm] (gen) {\textbf{Diffusion generator}\\Class-conditional 1D-UNet};
+\node[box, right=12mm of gen, minimum width=44mm, minimum height=11mm] (aug) {\textbf{Augmented training set}\\$500$ synthetic samples};
+
+\draw[arrow] (req) -- node[lab, above] {A. \texttt{SyntheticRequested}} (gate);
+\draw[garrow] (gate.north) to[bend left=15] node[lab, above] {audit:\\approval +\\generation} (log.south);
+\draw[arrow] (gate) -- node[lab, above] {B. approve} (gen);
+\draw[arrow] (gen) -- node[lab, above] {C. return\\samples} (aug);
+\draw[arrow] (gen.north) to[bend right=18] node[lab, right] {\texttt{SyntheticGenerated}} (sc.south);
+
+% --- Explicit reject path (kept minimal, no clutter) -------------------------
+\node[lab, text=black!75, below=2mm of gate.south] (rej) {reject if PoC $<\tau$ (blocks post-activation Byzantine requests)};
+\draw[-Latex, thick, black!60] ([yshift=-1mm]gate.south) -- (rej.north);
+
+\end{tikzpicture}
+

@@ -1,0 +1,145 @@
+% ============================================================================
+% Plain-English speaker notes for jury slides 9--16
+% Source deck: friends experimentation/Active_Ledger_FYP_Jury_updated.html
+% ============================================================================
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\setlist[itemize]{leftmargin=*, itemsep=3pt, topsep=3pt}
+
+\title{Jury talk script (very plain English)\\Slides 9--16 (from \texttt{Active\_Ledger\_FYP\_Jury\_updated.html})}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{How to use this file}
+Each section is what you say out loud. Keep it simple. If someone interrupts, use the ``If they ask'' lines.
+
+% ----------------------------------------------------------------------------
+\section{Slide 9 --- Results matrix (geometry vs behaviour)}
+
+\textbf{What you say (60--120 seconds):}
+``This slide is the heart of the results story.
+
+We measure APB-F1. APB is the rare beat class that actually matters for safety. We use a simple clinical cut-off: 0.75. If you drop below that, the system is not trustworthy for deployment talk.
+
+We test three attacks:
+\begin{itemize}
+\item Gaussian poisoning: obvious junk weights. This is the sanity-check attack.
+\item Static label-flip: sneaky poisoning where updates still look like normal training steps.
+\item Sleeper attack: attackers behave honestly early, then switch later. This is the worst case for defences that only look at one round at a time.
+\end{itemize}
+
+Now read the table like a jury, not like a leaderboard:
+
+FedAvg can look okay on some attacks, but under Gaussian it goes to 0.000 on APB-F1. That means the model basically gives up on the rare dangerous class. So FedAvg is not a safe default.
+
+Krum is a famous Byzantine defence, but under the sleeper it collapses to 0.306 on APB-F1. That is the headline failure: a defence that sounds strong can still fail on the medically important rare class when the attack hides across time.
+
+The geometric family (Multi-Krum, Median, Trimmed-Mean, Bulyan) helps on the obvious attack, but under the sleeper they fall below 0.75.
+
+Only PoC stays above 0.75 in all three columns. That is the whole claim in one picture: behaviour across rounds beats geometry in a single round.''
+
+\textbf{If they ask: ``Why not use accuracy or macro-F1?''}
+``Because they hide minority-class failure. APB-F1 forces the model to prove it still detects the dangerous rare beat under attack.''
+
+\textbf{If they ask: ``Why does FedAvg look okay on label-flip and sleeper in this table?''}
+``With only 2 bad clients out of 10, averaging can sometimes wash out poison on common classes. But it still breaks completely on Gaussian for APB. We are not claiming FedAvg is universally bad; we are claiming it is not reliable for rare-class safety under attack.''
+
+\textbf{If they ask: ``What exactly is PoC here?''}
+``A simple trust score from history: it reacts when a client's own validation behaviour gets worse over time, not only when a weight vector looks far away in one round.''
+
+% ----------------------------------------------------------------------------
+\section{Slide 10 --- Diffusion results (closing the stealth channel)}
+
+\textbf{What you say (45--90 seconds):}
+``This slide is the second big result.
+
+We use diffusion to help hospitals that do not have enough APB training samples. That is clinically motivated.
+
+But diffusion opens a new attack path: a bad hospital can request synthetic data while lying about the label. Then the generator creates the wrong class shape, and the poison enters training before the server averages weights. Normal Byzantine aggregation cannot fix poison that is already inside the training data.
+
+We compare:
+\begin{itemize}
+\item Blind diffusion with Multi-Krum: APB-F1 ends at 0.857, but the attacker can keep getting bad synthetic data, so backdoor success stays high.
+\item Trust-gated diffusion with PoC: APB-F1 ends at 0.879, and after the sleeper activates the bad client's trust score drops, so synthetic requests get blocked. That is how we structurally starve the backdoor path, not just average it away.''
+
+\textbf{If they ask: ``What is BSR in one sentence?''}
+``How often the attacker's trigger still fools the model into the wrong label. Lower is better.''
+
+% ----------------------------------------------------------------------------
+\section{Slide 11 --- ACISP critique and ESORICS response}
+
+\textbf{What you say (45--90 seconds):}
+``We went through real peer review.
+
+Reviewers pushed us on baselines, formal threat modelling, symbol clarity, and a fair story for blockchain.
+
+We responded by adding six standard Byzantine baselines, specifying three attacks clearly, cleaning notation, and explaining the ledger honestly: it is audit and governance, not `the blockchain trains the model'.
+
+The important security addition is verifiable on-chain receipts for synthetic approvals, so augmentation decisions are not a black box.''
+
+\textbf{If they ask: ``Why mention rejection?''}
+``Because it proves we iterated like real research, not a one-shot demo.''
+
+% ----------------------------------------------------------------------------
+\section{Slide 12 --- Proposal vs final paper}
+
+\textbf{What you say (45--90 seconds):}
+``Projects evolve when you build them.
+
+We kept the core idea: federated ECG on MIT-BIH with blockchain plus synthetic data for imbalance.
+
+We changed the emphasis from personalization to adversarial robustness because that is what the evidence demanded.
+
+We replaced GAN-style generation with 1D latent diffusion because it was more stable for our pipeline.
+
+We also discovered new problems that were not in the proposal: the augmentation stealth channel, the sleeper-style attack framing, and BSR as a security metric.''
+
+% ----------------------------------------------------------------------------
+\section{Slide 13 --- Timeline}
+
+\textbf{What you say (30--60 seconds):}
+``We built in phases: baseline federated learning, blockchain receipts on Ganache, PoC scoring, diffusion integration, then a large ablation after review feedback, and finally the ESORICS submission.''
+
+\textbf{If they ask: ``Why Ganache?''}
+``Local Ethereum sandbox: fast, repeatable, no real money, same contract behaviour as real Ethereum tooling.''
+
+% ----------------------------------------------------------------------------
+\section{Slide 14 --- Team roles}
+
+\textbf{What you say (30--45 seconds):}
+``We split responsibilities, but integration was shared because that is where systems actually work.
+
+Blockchain side: contracts, events, Web3 wiring.
+
+ML side: attacks, PoC logic, diffusion integration, paper.
+
+Experiments side: plots, consistency checks, presentation support.''
+
+% ----------------------------------------------------------------------------
+\section{Slide 15 --- Conclusions and future work}
+
+\textbf{What you say (60--120 seconds):}
+``Three takeaways.
+
+One: rare-class safety under attack is the real clinical question; PoC is the only defence above 0.75 APB-F1 across all three attacks.
+
+Two: diffusion needs governance; trust-gating plus receipts closes a path aggregation cannot reach.
+
+Three: blockchain earns its place as accountability infrastructure, not magic.
+
+Future work: more random seeds, stronger attackers, more datasets, and a production-grade permissioned chain.''
+
+% ----------------------------------------------------------------------------
+\section{Slide 16 --- Thank you}
+
+\textbf{What you say (15--30 seconds):}
+``Thank you.
+
+One line: we built federated ECG learning that is harder to poison, and we secured the synthetic-data path with auditable approvals.''
+
+\end{document}

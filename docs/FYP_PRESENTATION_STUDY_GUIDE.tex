@@ -1,0 +1,1390 @@
+% ============================================================================
+% Active-Ledger — FYP Presentation Study Guide (LaTeX)
+% Purpose: Help prepare for the final jury / viva by turning the slide deck
+% into a full speaking script + deep "why/how" notes + Q&A bank.
+%
+% Source slides: friends experimentation/Active_Ledger_FYP_Jury (2).html
+% Paper reference: docs/paper-from-gemini.tex
+% ============================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xspace}
+
+\setlist[itemize]{leftmargin=*, itemsep=2pt, topsep=2pt}
+\setlist[enumerate]{leftmargin=*, itemsep=2pt, topsep=2pt}
+
+% --- Key acronyms (for consistency with paper/slides) ------------------------
+\newcommand{\actledger}{\textsc{Active-Ledger}\xspace}
+\newcommand{\poc}{\textsc{PoC}\xspace}
+\newcommand{\fedavg}{\textsc{FedAvg}\xspace}
+\newcommand{\krum}{\textsc{Krum}\xspace}
+\newcommand{\mkrum}{\textsc{Multi-Krum}\xspace}
+\newcommand{\median}{\textsc{Median}\xspace}
+\newcommand{\tmean}{\textsc{Trimmed-Mean}\xspace}
+\newcommand{\bulyan}{\textsc{Bulyan}\xspace}
+
+\newcommand{\apbf}{APB-F1\xspace}
+
+\title{\actledger: Full FYP Presentation Preparation Guide\\
+\large From basics to ``inside-out'' understanding}
+\author{(Personal study notes)}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{How to use this guide (quick)}
+
+\begin{itemize}
+\item Treat each section as \textbf{speaker notes for one slide}. The structure mirrors the HTML deck.
+\item For each slide:
+  \begin{itemize}
+  \item Read the \textbf{One-line goal}.
+  \item Memorise the \textbf{Core story} in plain language.
+  \item Understand the \textbf{Why it is designed this way} bullets.
+  \item Practice the \textbf{Likely questions} at the end.
+  \end{itemize}
+\item The final sections contain a \textbf{deep Q\&A bank}. This is where viva marks are won.
+\end{itemize}
+
+\section{Project in one paragraph (opening script)}
+
+\textbf{Script (30--45 seconds).}
+Clinical ECG data is sensitive and cannot be pooled across hospitals, so federated learning is attractive. But real hospitals have non-independent and identically distributed (non-IID) data, extreme class imbalance, and a realistic risk of Byzantine participants that poison updates or inject backdoors. \actledger is a blockchain-orchestrated FL framework that defends the minority class that matters clinically---atrial premature beats (APB)---by using a behavioural trust score, Proof-of-Contribution (PoC), computed from on-chain accuracy history. The same PoC also gates synthetic augmentation requests to close a separate attack surface: poisoning through the data-generation pipeline. The ledger provides tamper-evident receipts for both aggregation and synthetic generation so decisions are auditable.
+
+\section{What is being claimed (what to repeat during questions)}
+
+\begin{itemize}
+\item \textbf{Primary claim (quantitative).} Across three attacks, \poc is the only defence that keeps \apbf above the clinical threshold of $0.75$.
+\item \textbf{Secondary claim (system/security).} Synthetic augmentation is an attack surface; trust-gating plus on-chain receipts closes it in a way robust aggregation alone cannot.
+\item \textbf{Blockchain claim (bounded).} The chain is not ``doing learning'' and PoC is not a cryptographic proof; the ledger provides \emph{tamper-evident history} and \emph{auditable approvals} that enable accountable governance.
+\end{itemize}
+
+% ============================================================================
+\section{Slide-by-slide preparation (mirrors the HTML deck)}
+
+\subsection{Slide 0 --- Title / framing}
+\textbf{One-line goal.} State the problem domain and the three pillars: FL, governance, augmentation.
+
+\textbf{Core story (simple).}
+This project builds an FL system for ECG classification that is robust to adversarial clients and also provides an auditable governance trail using blockchain.
+
+\textbf{Key pillars to name.}
+\begin{itemize}
+\item \textbf{Federated learning:} data stays at hospitals.
+\item \textbf{Behavioural trust score (PoC):} uses multi-round history rather than single-round geometry.
+\item \textbf{Trust-gated synthetic augmentation:} diffusion generator is helpful but unsafe unless governed.
+\end{itemize}
+
+\textbf{Likely question.} ``What is new here compared to standard robust aggregation?''
+\begin{itemize}
+\item Robust aggregation filters model updates; it does not govern \emph{synthetic data requests}.
+\item PoC is history-based (behavioural) rather than geometry-based (single round).
+\end{itemize}
+
+\subsection{Slide 1 --- Table of contents}
+\textbf{One-line goal.} Show the jury the roadmap so the talk feels controlled.
+
+\textbf{How to speak it.} ``First the clinical problem and research gap, then the architecture, then PoC and diffusion, then experiments and results, and finally timeline and conclusion.''
+
+\subsection{Slide 2 --- Problem statement}
+\textbf{One-line goal.} Explain the \emph{three simultaneous failures} that make clinical FL hard.
+
+\textbf{Core story.}
+\begin{enumerate}
+\item \textbf{Non-IID hospital data:} sites have different demographics/equipment; honest updates look like outliers.
+\item \textbf{Class imbalance:} rare arrhythmias (APB) are clinically important but easy to erase.
+\item \textbf{Governance gap:} typical FL assumes a trusted server; without receipts, post-mortem accountability is weak.
+\end{enumerate}
+
+\textbf{Why this matters clinically.}
+\begin{itemize}
+\item Missing APB is dangerous (delays atrial fibrillation workup).
+\item False APB causes unnecessary consults, so precision matters as well as recall.
+\end{itemize}
+
+\textbf{Likely question.} ``Why focus on APB rather than overall accuracy?''
+\begin{itemize}
+\item Because overall metrics can stay high even when minority class fails.
+\item Clinical deployability depends on not missing the dangerous minority class.
+\end{itemize}
+
+\subsection{Slide 3 --- Prior work}
+\textbf{One-line goal.} Show that existing pieces exist, but none solves the combined problem.
+
+\textbf{How to explain quickly.}
+\begin{itemize}
+\item \fedavg: no defence.
+\item \krum/\mkrum/\median/\tmean/\bulyan: geometry-only, per-round; harmed by non-IID and bypassed by sleeper/backdoor behaviour.
+\item BlockFL / blockchain FL: often passive logging or coordination, not active defence and not augmentation governance.
+\item Time-series GANs: can generate signals, but governance of who can request/use synthetic samples is missing.
+\end{itemize}
+
+\textbf{Likely question.} ``Why not just use reputation FL (Kang et al.)?''
+\begin{itemize}
+\item Reputation FL focuses on identity and incentives; this work focuses on a minimal behavioural score and the augmentation attack surface.
+\item The key novelty is \emph{closing the augmentation stealth channel} with verifiable approvals.
+\end{itemize}
+
+\subsection{Slide 4 --- Research gap matrix}
+\textbf{One-line goal.} Make the gap legible as a checklist of capabilities.
+
+\textbf{How to defend the claim.}
+The gap is not ``blockchain'' alone or ``robust aggregation'' alone; it is the combination:
+\begin{itemize}
+\item provenance + robust aggregation + behavioural memory + governed augmentation + closing the augmentation stealth channel + rare-class threshold across attacks.
+\end{itemize}
+
+\textbf{Important caution.}
+Avoid over-claiming. The paper intentionally frames blockchain as a tamper-evident log and approval ledger, not a new consensus protocol.
+
+\subsection{Slide 5 --- System architecture}
+\textbf{One-line goal.} Walk through the system with clear data flow and decision points.
+
+\textbf{Architecture in three layers.}
+\begin{itemize}
+\item \textbf{Clinical edge (clients).}
+  \begin{itemize}
+  \item 10 clients (8 honest, 2 Byzantine), Dirichlet $\alpha=0.5$ partitioning, 40 rounds, 3 local epochs.
+  \item CNN--LSTM classifier on 360-sample windows at 360Hz.
+  \item Private data stays local; only weights and metrics are shared.
+  \end{itemize}
+\item \textbf{Off-chain orchestrator (server).}
+  \begin{itemize}
+  \item Receives updates; logs receipts on-chain.
+  \item Computes PoC score using EMA of \emph{validation accuracy history} and participation.
+  \item Aggregates \textbf{top-$K=7$} clients by PoC (weighted by sample size).
+  \item Approves synthetic requests only if PoC $\ge \tau$.
+  \end{itemize}
+\item \textbf{Ledger (Ganache Ethereum + Solidity contract).}
+  \begin{itemize}
+  \item Stores events: update logs, round completion, synthetic requested/approved/generated.
+  \item Stateless/event-only design: emphasis on receipts and auditability (not training).
+  \end{itemize}
+\end{itemize}
+
+\textbf{Why Ganache? (important viva topic).}
+\begin{itemize}
+\item It provides a fully controlled local Ethereum environment for a research prototype.
+\item Deterministic, fast, no real cost, no external dependencies during experiments.
+\item Allows the same EVM execution model and event logs as mainnet without production overhead.
+\end{itemize}
+
+\subsection{Slide 6 --- Proof-of-Contribution (PoC)}
+\textbf{One-line goal.} Explain why behaviour across rounds beats geometry in a sleeper/backdoor setting.
+
+\textbf{Definition (plain language).}
+PoC is a trust score per client that increases when a client repeatedly reports good validation accuracy and participates consistently, and drops quickly when its behaviour worsens.
+
+\textbf{Equation-level understanding.}
+\[
+\mathrm{PoC}(i,r)=\mathrm{EMA}_\gamma(\text{accuracy history})\times\text{participation fraction},\quad \gamma=0.7.
+\]
+
+\textbf{Why this works against sleeper.}
+\begin{itemize}
+\item A sleeper is \emph{not} anomalous early; geometry-only filters have no signal.
+\item After activation, label flipping hurts the attacker’s own validation accuracy on honest validation data.
+\item EMA with $\gamma=0.7$ adapts in a few rounds, pushing attackers out of top-$K$.
+\end{itemize}
+
+\textbf{Likely questions.}
+\begin{itemize}
+\item ``Is PoC a cryptographic proof?'' No. It is a score, not a consensus protocol.
+\item ``Could an attacker fake the accuracy?'' In this design, accuracy is evaluated against a public proxy subset held by the orchestrator (paper detail); a production design would require stronger attestation or secure evaluation.
+\item ``Why top-$K=7$?'' It trades robustness and stability: enough diversity to avoid overfitting to a few sites, but excludes low-trust clients.
+\end{itemize}
+
+\subsection{Slide 7 --- Trust-gated latent diffusion}
+\textbf{One-line goal.} Introduce the augmentation stealth channel and explain why it is upstream of aggregation.
+
+\textbf{The attack (augmentation stealth channel).}
+\begin{itemize}
+\item Byzantine client requests synthetic data but flips the requested label.
+\item The generator produces samples from the wrong class manifold.
+\item Those samples are injected into local training \emph{before} aggregation; robust aggregators cannot ``undo'' poisoned data.
+\end{itemize}
+
+\textbf{The defence (trust gate + receipts).}
+\begin{itemize}
+\item Synthetic request is approved only if PoC $\ge \tau=0.4$.
+\item After sleeper activation, attacker’s PoC drops; requests are rejected.
+\item The ledger records \texttt{Requested/Approved/Generated} so every sample batch is auditable.
+\end{itemize}
+
+\textbf{Why 1D diffusion for ECG?}
+\begin{itemize}
+\item ECG is a 1D time-series; 1D UNet fits the structure and is efficient.
+\item Diffusion is empirically more stable than GANs for generation (less mode collapse, better diversity).
+\item Conditioning on class label supports targeted rare-class augmentation.
+\end{itemize}
+
+\textbf{Likely question.} ``Why not use GAN/TimeGAN like the proposal?''
+\begin{itemize}
+\item The project evolved: diffusion was used because it yielded higher quality and more stable training on the target setup.
+\item In the final story, the key contribution is governance and security of augmentation, not claiming diffusion is universally best.
+\end{itemize}
+
+\subsection{Slide 8 --- Experimental setup}
+\textbf{One-line goal.} Make the evaluation replicable and defensible.
+
+\textbf{Dataset and preprocessing.}
+\begin{itemize}
+\item MIT-BIH Arrhythmia Database, AAMI EC57 mapping.
+\item 360-sample windows at 360Hz, standard normalisation.
+\item Five classes: Normal, LBBB, RBBB, APB, PVC.
+\end{itemize}
+
+\textbf{Federation parameters.}
+\begin{itemize}
+\item 10 clients; 2 Byzantine (20\%).
+\item 40 rounds; 3 local epochs; Adam LR $10^{-3}$; batch size 128.
+\item Dirichlet concentration $\alpha=0.5$ (non-IID stress test).
+\item PoC: EMA $\gamma=0.7$; trust threshold $\tau=0.4$; top-$K=7$.
+\end{itemize}
+
+\textbf{Attacks (know them precisely).}
+\begin{itemize}
+\item \textbf{Gaussian poisoning:} weights replaced by uniform noise each round.
+\item \textbf{Static label-flip:} targeted pairwise swap Normal $\leftrightarrow$ LBBB.
+\item \textbf{Sleeper:} behaves honestly until round 15, then backdoors APB $\rightarrow$ LBBB with backdoor-critical-layer fine-tuning.
+\end{itemize}
+
+\subsection{Slide 9 --- Results}
+\textbf{One-line goal.} Make the jury care about the APB safety story.
+
+\textbf{The table to memorise (APB-F1).}
+\begin{itemize}
+\item \fedavg: collapses under Gaussian (APB-F1 = 0.000).
+\item \krum: collapses under sleeper (APB-F1 \(\approx 0.306\)).
+\item \poc: only method above 0.75 across all three attacks (worst \(\approx 0.786\)).
+\item Trust-gated diffusion: APB-F1 \(\approx 0.879\) vs blind baseline \(\approx 0.857\).
+\end{itemize}
+
+\textbf{How to answer ``but FedAvg looks good on macro-F1''.}
+\begin{itemize}
+\item Macro-F1 can hide minority-class failures.
+\item In non-IID + low attacker ratio, mean aggregation may dilute poison on common classes.
+\item APB is the deployability bottleneck; therefore \apbf is the main metric.
+\end{itemize}
+
+\textbf{Gas-cost slide caveat.}
+If asked: the paper frames gas accounting as out-of-scope for the main claim; the prototype uses event logs rather than storage-heavy writes. For production, a permissioned chain or L2 could be considered.
+
+\subsection{Slide 10 --- Timeline}
+\textbf{One-line goal.} Demonstrate research maturity and iteration.
+
+\textbf{What to highlight.}
+The project iterated from baseline FL $\rightarrow$ blockchain integration $\rightarrow$ PoC $\rightarrow$ diffusion gate $\rightarrow$ formal threat model and stronger baselines after ACISP critique.
+
+\subsection{Slide 11 --- Team and work division}
+\textbf{One-line goal.} Show clear ownership and collaboration.
+
+\textbf{Prepare one sentence each about contributions.}
+\begin{itemize}
+\item Blockchain and orchestration: smart contract, event schema, Web3 integration.
+\item ML and research: PoC, threat model, attacks, diffusion integration, paper.
+\item Data and evaluation: preprocessing, partitioning, metrics, plots, consistency.
+\end{itemize}
+
+\subsection{Slide 12 --- ACISP critique and ESORICS response}
+\textbf{One-line goal.} Show ability to take reviewer feedback and improve scientifically.
+
+\textbf{Key lesson.}
+Most critique categories are ``research hygiene'': baselines, threat model clarity, symbol hygiene, consistency between prose and figures, and bounded claims about blockchain.
+
+\subsection{Slide 13 --- Proposal vs final}
+\textbf{One-line goal.} Explain evolution without sounding like scope drift.
+
+\textbf{Explain as ``research refinement''.}
+\begin{itemize}
+\item Some proposed items were replaced with stronger or more relevant ones (GAN $\rightarrow$ diffusion, 3 clients $\rightarrow$ 10 clients, weak baselines $\rightarrow$ robust baselines).
+\item New insight emerged: the augmentation stealth channel was not obvious at proposal time.
+\end{itemize}
+
+\subsection{Slide 14 --- Conclusions}
+\textbf{One-line goal.} End with three clean takeaways and believable future work.
+
+\textbf{The three findings.}
+\begin{itemize}
+\item Behavioural memory (PoC) beats geometry for sleeper/backdoor behaviour.
+\item Augmentation governance is necessary; trust-gated diffusion improves safety and lowers backdoor success.
+\item Blockchain earns its place via tamper-evident receipts and governed approvals (bounded claim).
+\end{itemize}
+
+\subsection{Slide 15 --- Thank you / final bullets}
+\textbf{One-line goal.} Leave a ``numbers + story'' imprint: 0.75 threshold, 0.879, 0.857, 0.000, 0.306.
+
+% ============================================================================
+\newpage
+\section{Deep understanding: key design decisions (the ``why'' section)}
+
+\subsection{Why CNN--LSTM for ECG classification?}
+\begin{itemize}
+\item \textbf{Signal structure.} ECG has local morphology (QRS complexes) and temporal dependencies (beat-to-beat context). CNN captures local patterns; LSTM captures sequence context.
+\item \textbf{Practicality.} The architecture is compact, trains reliably, and is light enough for FL clients.
+\item \textbf{Why not Transformers?} Transformers are heavier, need more data, and introduce more hyperparameter sensitivity; the project targeted a stable baseline to test security mechanisms.
+\item \textbf{Why not pure CNN?} Pure CNN can work, but LSTM adds temporal robustness in noisy clinical segments.
+\end{itemize}
+
+\subsection{Why 1D latent diffusion for ECG synthesis?}
+\begin{itemize}
+\item \textbf{Diffusion stability.} Diffusion training tends to be more stable than GANs (less collapse), important for research timelines.
+\item \textbf{1D fit.} ECG is 1D; a 1D UNet is efficient and matches inductive bias.
+\item \textbf{Class-conditional generation.} Conditioning allows targeted rare-class augmentation.
+\item \textbf{Why latent diffusion (vs pixel-space diffusion).} Latent versions reduce compute; in a research prototype, this matters.
+\end{itemize}
+
+\subsection{Why reuse the same model across experiments?}
+\begin{itemize}
+\item \textbf{Controlled comparison.} If the classifier changes across defences/attacks, it becomes unclear whether differences are due to security mechanism or model capacity.
+\item \textbf{Fairness.} All defences are tested on identical learning dynamics.
+\item \textbf{Research goal.} The contribution is a security/governance mechanism; the base classifier should be stable, not ``cherry-picked''.
+\end{itemize}
+
+\subsection{Why evaluate 7 aggregation defences?}
+\begin{itemize}
+\item \textbf{Community expectation.} Robust FL is judged against these canonical baselines.
+\item \textbf{Coverage.} Geometry-only filters (Krum family, coordinate-wise) and composed defences (Bulyan) represent common families.
+\item \textbf{Narrative clarity.} It shows the difference between geometry-only vs behavioural history.
+\end{itemize}
+
+\subsection{Why Ganache and an event-only smart contract?}
+\begin{itemize}
+\item \textbf{Prototype speed and determinism.} Ganache runs locally, enabling repeatable experiments.
+\item \textbf{Receipts vs state.} Events are lightweight and preserve an append-only audit trail without expensive persistent storage writes.
+\item \textbf{Bounded claim.} The ledger is used for auditability and governance, not to claim decentralised training.
+\end{itemize}
+
+\subsection{Why not just use a signed log instead of blockchain?}
+\begin{itemize}
+\item A signed log still requires a trust anchor for who maintains it and can be disputed in multi-party settings.
+\item Blockchain provides a shared, tamper-evident timeline and public verifiability within the consortium model.
+\item For a research prototype, it demonstrates accountable governance; production could also use permissioned ledgers.
+\end{itemize}
+
+% ============================================================================
+\newpage
+\section{Viva / Jury Q\&A bank (practice answers)}
+
+\subsection{High-probability questions (top 20)}
+\begin{enumerate}
+\item \textbf{What is the exact research contribution?}\\
+Rare-class robustness under attack (APB-F1 across three attacks) + governed augmentation (trust-gated diffusion) + auditable receipts enabling accountable decisions.
+
+\item \textbf{Why is APB the primary metric?}\\
+APB is rare and clinically important; macro metrics can hide minority failure; a clinically deployable system cannot sacrifice the rare dangerous class.
+
+\item \textbf{What does PoC measure, exactly?}\\
+Historical validation accuracy (EMA) multiplied by participation; it is a behavioural reliability score, not a cryptographic proof.
+
+\item \textbf{How does PoC stop sleeper attacks?}\\
+Sleeper behaves honestly early; after activation, its own validation accuracy drops; EMA reacts and reduces score; attackers fall out of top-$K$.
+
+\item \textbf{Why can’t Krum stop the sleeper attack?}\\
+Krum is single-round geometry; sleeper updates are crafted to look geometrically normal; there is no early anomaly, and post-activation updates can remain close to honest ones in weight space.
+
+\item \textbf{What is the augmentation stealth channel?}\\
+Poisoning via synthetic data requests: attacker requests minority samples but flips labels; poison enters training data before aggregation.
+
+\item \textbf{Why is the blockchain needed?}\\
+To store tamper-evident receipts for updates and synthetic approvals; enables accountability and prevents history rewriting in consortium setting.
+
+\item \textbf{Why Ganache instead of public Ethereum?}\\
+Local deterministic research environment; avoids real cost and latency; still uses EVM semantics and event logs.
+
+\item \textbf{Why CNN--LSTM?}\\
+CNN captures local ECG morphology; LSTM captures temporal dependencies; compact and reliable for FL.
+
+\item \textbf{Why diffusion, why 1D UNet?}\\
+Stable generation, good diversity; ECG is 1D; UNet is standard for diffusion and efficient in 1D.
+
+\item \textbf{Why were all experiments done on the same classifier?}\\
+To isolate the effect of the defence; changing classifier confounds results.
+
+\item \textbf{What are the three attacks precisely?}\\
+Gaussian noise weights; Normal$\leftrightarrow$LBBB static label swap; sleeper APB$\rightarrow$LBBB backdoor via critical-layer flip after round 15.
+
+\item \textbf{Why choose Dirichlet $\alpha=0.5$?}\\
+Common non-IID stress setting; creates strong heterogeneity across clients.
+
+\item \textbf{What is the trust threshold $\tau=0.4$?}\\
+Minimum PoC required to approve synthetic requests; chosen to block post-activation attackers once their score drops.
+
+\item \textbf{Why top-$K=7$?}\\
+Exclude low-trust clients while keeping enough diversity; balances robustness and stability.
+
+\item \textbf{What is BSR and why is it needed?}\\
+Backdoor Success Rate captures residual backdoor capacity even when APB-F1 looks healthy; security metric for augmented setting.
+
+\item \textbf{What are the limitations?}\\
+Single seed per cell; fixed 20\% attacker ratio; limited attack coverage; gas cost analysis not the main contribution; no cross-dataset generalisation.
+
+\item \textbf{What would be done differently for production?}\\
+Permissioned ledger/L2; stronger attestation for metrics; more seeds; higher attacker ratios; adaptive adversary evaluation; broader datasets.
+
+\item \textbf{Does the blockchain slow training?}\\
+In the prototype overhead is small (event logging); latency is not claimed as a contribution.
+
+\item \textbf{If a client lies about accuracy, does PoC fail?}\\
+If accuracy were self-reported, yes; the paper clarifies accuracy is evaluated against an orchestrator-held public proxy subset. Production would require stronger evaluation/attestation.
+\end{enumerate}
+
+\subsection{Common follow-ups (short answers)}
+\begin{itemize}
+\item \textbf{Why not FedProx / personalisation?} The final framing is security/robustness; PoC handles heterogeneity; personalisation was de-scoped.
+\item \textbf{Why only 10 clients?} Research prototype + controlled evaluation; enough to show non-IID and 20\% Byzantines while keeping experiments feasible.
+\item \textbf{Why only 2 Byzantines?} To match a realistic minority threat model and align with robust aggregation assumptions; future work should test higher ratios.
+\end{itemize}
+
+% ============================================================================
+\section{Cheat sheets (for last-minute revision)}
+
+\subsection{Numbers to memorise}
+\begin{itemize}
+\item Clinical threshold: \textbf{APB-F1 = 0.75}.
+\item Worst-case \poc across attacks: \textbf{0.786}.
+\item \fedavg under Gaussian: \textbf{0.000}.
+\item \krum under sleeper: \textbf{0.306}.
+\item Diffusion: trust-gated \textbf{0.879} vs blind baseline \textbf{0.857}.
+\item Key hyperparameters: 40 rounds, 3 local epochs, batch 128, Adam $10^{-3}$, Dirichlet $\alpha=0.5$, EMA $\gamma=0.7$, trust threshold $\tau=0.4$, top-$K=7$.
+\end{itemize}
+
+\subsection{Architecture one-liner}
+\textbf{Uploads and metrics are logged as receipts; PoC is computed from accuracy history; top-$K$ aggregation uses PoC; the same PoC gates synthetic requests; the ledger makes both aggregation and augmentation auditable.}
+
+% ============================================================================
+% ============================================================================
+\newpage
+\section{MASTER SECTION --- Complete project, from basics to hero}
+\label{sec:master}
+
+\textit{This is the deep-dive section. Read it once end-to-end, slowly.
+After this, you should be able to explain any part of the project
+without referring to the paper.}
+
+% ----------------------------------------------------------------------------
+\subsection{Part A --- The problem in plain English}
+
+\subsubsection{What is the clinical problem?}
+A cardiologist wants a reliable model that can look at a short ECG
+strip (a small window of a patient's heartbeat) and say which
+category the beat belongs to: Normal, Left Bundle Branch Block
+(LBBB), Right Bundle Branch Block (RBBB), Atrial Premature Beat
+(APB), or Premature Ventricular Contraction (PVC).
+
+Two things are uncomfortable:
+\begin{enumerate}
+\item Patient data cannot leave the hospital (privacy laws, HIPAA-
+style regulations). That rules out pooling all data in one place.
+\item Rare but dangerous heartbeats (especially APB) are the
+clinically important ones. If the model gets APB wrong, a doctor
+either misses an early atrial fibrillation signal, or does an
+unnecessary consult.
+\end{enumerate}
+
+So the model has to be trained \textbf{without centralising data}
+and also has to \textbf{not fail on rare classes}.
+
+\subsubsection{Why not just train a classical model in one hospital?}
+\begin{itemize}
+\item A single hospital's data is not diverse enough (age, equipment, ethnicity, protocols vary across sites).
+\item The rare classes in one hospital might be extremely rare, so a local model overfits.
+\item To generalise across the real world, the model has to see many distributions.
+\end{itemize}
+
+\subsubsection{Why does this become a security problem?}
+Once multiple hospitals share a model-training system:
+\begin{itemize}
+\item Any compromised hospital can upload corrupted weight updates. That is a \textbf{Byzantine} client.
+\item The attacker can degrade overall accuracy or, more dangerously, silently make the model wrong on specific classes (a \textbf{backdoor}).
+\item In a hospital setting, a silent backdoor on APB is not a ``bug'', it is a patient safety risk.
+\end{itemize}
+
+That is why the project is not ``just FL'' but ``FL + defence + auditability''.
+
+% ----------------------------------------------------------------------------
+\subsection{Part B --- Full system flow (end-to-end trace of one round)}
+
+Imagine a single federated round, $r$. Nothing is abstract here; this is exactly what the system does:
+
+\begin{enumerate}
+\item \textbf{Selection.}
+The server looks at the PoC score $\mathrm{PoC}(i, r)$ for every
+client $i$, ranks all clients, and picks the top $K=7$. The other
+three are skipped for this round. For round $r=0$ the PoC score is
+initialised at $0$ for everyone, so in the very first rounds
+selection behaves almost like uniform selection.
+
+\item \textbf{Local training on each selected client.}
+\begin{itemize}
+\item The client receives the current global model weights $\theta_r$.
+\item It runs \textbf{3 local epochs} of Adam (LR $10^{-3}$, batch $128$) on its own training split.
+\item If the client has rare-class deficit (fewer than $\sim 50$ samples of APB, say), it files a \texttt{SyntheticRequested} event on the ledger asking for synthetic help for that class.
+\end{itemize}
+
+\item \textbf{Synthetic request handling.}
+The approval daemon reads the request on-chain:
+\begin{itemize}
+\item If the requester's current PoC is $\ge \tau = 0.4$: approve.
+\item Else: reject (recorded on-chain anyway).
+\end{itemize}
+If approved, the 1D latent diffusion generator runs 30 DDPM steps with the requested class label as the conditioning signal, returns $\sim 500$ synthetic ECG windows, and emits \texttt{SyntheticGenerated}. The client then retrains using both real and synthetic samples for that round.
+
+\item \textbf{Upload and receipt.}
+Each selected client uploads its new weights $\theta_i^{r+1}$ to the server. The server writes an \texttt{UpdateLogged} event on-chain with the client ID, round, the SHA-256 hash of the weights, and the client's self-reported training-round accuracy.
+
+\item \textbf{Orchestrator scoring.}
+The orchestrator holds a small, public, anonymised \emph{proxy subset} of MIT-BIH. It evaluates each submitted model on that proxy and gets a validation accuracy $\mathrm{acc}_{i,r}$ per client. This accuracy is used to update the PoC EMA:
+\[
+\mathrm{EMA}_{\gamma}\big(\mathrm{acc}_{i,:r}\big) \gets \gamma \cdot \mathrm{acc}_{i,r} + (1-\gamma) \cdot \mathrm{EMA}_{\gamma}\big(\mathrm{acc}_{i,:r-1}\big),\quad \gamma=0.7.
+\]
+Multiply by the participation fraction: \emph{(rounds with a valid \texttt{UpdateLogged}) / (total rounds so far)}. Multiply these two numbers to get $\mathrm{PoC}(i, r+1)$. Clamp into $(10^{-6}, 1-10^{-6})$.
+
+\item \textbf{Aggregation.}
+The server aggregates the top-$K$ updates weighted by local sample size (honest non-IID clients with more data legitimately count more). The new global model $\theta_{r+1}$ is formed.
+
+\item \textbf{Round completion receipt.}
+The server writes a \texttt{RoundCompleted} event on-chain with the hash of $\theta_{r+1}$. This is what makes the history auditable: a third party can later verify which models were accepted on which round.
+
+\item \textbf{Broadcast.}
+$\theta_{r+1}$ is sent back to all clients for round $r+2$.
+\end{enumerate}
+
+Repeat for 40 rounds. Evaluate final per-class F1 on a held-out 15\% test split per client.
+
+\textit{If you can recite this 8-step loop fluently in the viva, you can defend the architecture.}
+
+% ----------------------------------------------------------------------------
+\subsection{Part B$^\star$ --- Federated Learning (conceptual deep dive)}
+\label{sec:fl-conceptual}
+
+\textit{This subsection is the ``conceptual FL'' layer: what FL is, why FedAvg works,
+why it fails under non-IID, what client drift is, and why geometry-only defences behave the way they do.}
+
+\subsubsection{B$^\star$.1 --- What federated learning is (one clean definition)}
+Federated learning (FL) is a training paradigm where multiple clients (hospitals)
+train a shared model collaboratively without sharing raw data. Each client runs
+local optimisation on its private data and sends only a model update (weights or
+gradients) to a server. The server aggregates these updates into a new global
+model and broadcasts it back. This repeats across rounds.
+
+\subsubsection{B$^\star$.2 --- Why \fedavg works in the IID world (intuition)}
+In the simplest case, every hospital's data distribution is identical
+(independent and identically distributed, IID). Then each client's gradient is
+an unbiased estimate of the same underlying ``true'' gradient of the global
+objective. Averaging many such gradients reduces noise (variance), so the mean
+update points in a useful direction. This is why \fedavg is a strong baseline
+when the assumptions hold and there are no adversaries.
+
+In plain language: if everyone is learning from the same kind of patients, then
+``average of what everyone learned'' is a good approximation of what would have
+happened if all data were pooled.
+
+\subsubsection{B$^\star$.3 --- What changes under non-IID data (the core pain)}
+In hospitals, data is almost never IID:
+\begin{itemize}
+\item Site A might have older patients, Site B younger patients.
+\item One site might see more APB cases due to referral patterns.
+\item Equipment and preprocessing pipelines differ.
+\end{itemize}
+
+Under non-IID, each client is optimising a \emph{different local objective}.
+Therefore, local gradients can point in different directions. This creates two
+important phenomena:
+\begin{itemize}
+\item \textbf{Legitimate outliers.} Honest clients can look far from the mean because their data is genuinely different.
+\item \textbf{Slower or unstable convergence.} Averaging conflicting updates can move the global model in a direction that helps majority sites and hurts minority sites.
+\end{itemize}
+
+\subsubsection{B$^\star$.4 --- Client drift (what it is and why it matters)}
+Client drift means: after several local steps, a client's model can move toward
+its local optimum, which may be far from the global optimum when data is non-IID.
+The more local epochs are run, the more drift can happen. Drift is not a security
+attack; it is a statistical/optimisation effect. However, drift creates a
+security side-effect: it becomes hard to tell ``honest disagreement'' from
+``malicious manipulation'' purely from weight geometry.
+
+\subsubsection{B$^\star$.5 --- Why non-IID makes Byzantine defence harder}
+Most classical Byzantine-robust FL defences are based on geometry: they try to
+remove updates that are ``far'' from the others in the current round.
+
+But in non-IID FL:
+\begin{itemize}
+\item Some honest clients are far from the mean (because they represent minority demographics or rare cases).
+\item Filtering based on distance can accidentally throw away the most clinically valuable clients (the ones who see APB).
+\end{itemize}
+
+This is exactly why the project focuses on rare-class preservation: a defence
+that protects the average case but discards the rare-class experts is not
+clinically deployable.
+
+\subsubsection{B$^\star$.6 --- The difference between geometric and behavioural signals}
+\textbf{Geometric signal (single-round).} ``Does this update look like the crowd \emph{right now}?''\\
+Used by \krum/\mkrum/\median/\tmean/\bulyan.
+
+\textbf{Behavioural signal (multi-round).} ``Has this client behaved reliably across rounds?''\\
+Used by PoC via an EMA of validation accuracy and participation.
+
+The conceptual reason PoC helps is that it introduces the missing dimension:
+\textbf{time}. A sleeper attacker is designed to be geometrically normal early,
+so single-round geometry has no evidence to act on.
+
+\subsubsection{B$^\star$.7 --- Why sleeper attacks are ``the worst case'' for geometry-only defences}
+A sleeper attack behaves honestly for many rounds and activates later.
+That means:
+\begin{itemize}
+\item Before activation, its updates are indistinguishable from honest updates (so geometry-based filters learn nothing).
+\item After activation, it can still craft updates to remain close in weight space (especially when only a small subset of backdoor-critical layers is changed).
+\end{itemize}
+
+So the defence needs a non-geometric signal. In \actledger that signal is:
+``does the client keep achieving good validation accuracy on a clean reference set across time?''
+
+\subsubsection{B$^\star$.8 --- Why the project holds the model constant across experiments}
+From a conceptual FL standpoint, a fair defence comparison requires that
+\emph{the learning problem be identical} across methods. If the classifier,
+generator, optimiser, or data partitioning changes across conditions, then
+differences in results can be attributed to those changes rather than the defence.
+Holding the model constant makes the experiment about security/governance, not
+model capacity.
+
+\subsubsection{B$^\star$.9 --- The shortest ``what FL is'' answer for viva}
+\textbf{FL is distributed training where data stays local, clients send model updates, a server aggregates them, and non-IID makes honest clients disagree---which is why robust defence needs either strong statistics or history-based behavioural trust.}
+
+% ----------------------------------------------------------------------------
+\subsection{Part B-II --- Non-IID data and the Dirichlet partition (plain English)}
+\label{sec:noniid-dirichlet}
+
+\textbf{Simple definition.} ``IID'' means every client's data is drawn from
+the same distribution, like cutting one big pizza into equal slices. ``Non-IID''
+means each client has a different flavour of data. One hospital might mostly see
+Normal beats; another might see many APB cases; another might have older patients
+only.
+
+\textbf{Why this matters for FL.} When every client is different, the
+``average'' model update doesn't point in the same direction that a central-dataset
+model would. Some clients pull the global model toward their majority class;
+others pull it toward their niche. The global model becomes a compromise, and
+compromises often fail the minority class.
+
+\textbf{Dirichlet partition in one picture.}
+Imagine you want to split a dataset among 10 clients and control how unequal the
+split is. The Dirichlet distribution with parameter $\alpha$ is the standard
+knob:
+\begin{itemize}
+\item $\alpha = 100$: almost equal slices across clients (close to IID).
+\item $\alpha = 0.5$ (this project): strongly skewed, so some clients get a lot
+of APB and others get almost none. Realistic and challenging.
+\item $\alpha = 0.05$: extreme skew, most clients get only one class.
+\end{itemize}
+$\alpha$ is effectively a ``fairness knob'' for how balanced the per-class counts
+are across clients.
+
+\textbf{Why $\alpha=0.5$ was chosen.} It is the community-standard non-IID stress
+test. Strong enough to break naive FedAvg, not so extreme that the experiment
+becomes a pathological edge case.
+
+\textbf{One viva-ready line.}
+\textit{``Dirichlet $\alpha=0.5$ is our non-IID stress test: each client has a
+meaningfully different mix of classes, so honest clients can legitimately disagree,
+which is why geometric defences over-penalise minority-class experts.''}
+
+% ----------------------------------------------------------------------------
+\subsection{Part B-III --- CNN and LSTM in simple language}
+\label{sec:cnn-lstm}
+
+\textbf{ECG as a simple picture.} An ECG window is just a 1D signal: 360 numbers
+that go up and down over time (one second at 360\,Hz). The classifier has to
+look at this shape and say which class it is.
+
+\textbf{What a CNN does (pattern detector).}
+A Convolutional Neural Network (CNN) slides a small ``template'' across the
+signal and measures how well the template matches at each position. If a
+template looks like a QRS spike, the CNN lights up wherever a QRS spike appears.
+Multiple templates are learned automatically; deeper layers combine simple
+templates into more complex ones (``a sharp upstroke followed by a wide dip =
+premature beat''). \textbf{Analogy:} a CNN is like a moving magnifying glass
+that notices small repeating shapes.
+
+\textbf{What an LSTM does (sequence memory).}
+A Long Short-Term Memory (LSTM) is a type of recurrent network. It reads the
+signal one chunk at a time and maintains a running ``memory state''. This lets
+the model decide ``this beat is abnormal because the last two beats were also
+abnormal'' rather than judging each beat in isolation. \textbf{Analogy:} the
+LSTM is a reader who keeps notes in the margin and uses those notes when deciding
+what the next sentence means.
+
+\textbf{Why combine them (CNN-LSTM).}
+CNN extracts ``what does this piece of the waveform look like?''
+LSTM extracts ``how does the shape evolve across the window?''
+Together: local shape + temporal context = more reliable classification,
+especially on borderline beats.
+
+\textbf{Why not just Transformer?}
+A Transformer is more powerful but hungry for data and compute. In FL, each
+client has limited data and compute; Transformers also have many hyperparameters
+that would confound a security comparison. CNN-LSTM is the right middle ground.
+
+% ----------------------------------------------------------------------------
+\subsection{Part B-IV --- Diffusion models, UNet, DDPM, latent diffusion (plain English)}
+\label{sec:diffusion-conceptual}
+
+\textbf{The core idea in one sentence.}
+Diffusion models learn to \emph{undo noise}. If you slowly blur a real ECG with
+random noise until it becomes garbage, a diffusion model learns the reverse:
+it starts from pure noise and step-by-step removes noise until a realistic
+sample appears.
+
+\textbf{The forward process (conceptual).}
+Think of taking a clean ECG and adding a little noise at each of $T$ steps. By
+step $T$ the ECG is indistinguishable from random noise. This is deterministic
+and trivial to compute; it doesn't need learning.
+
+\textbf{The reverse process (the model).}
+The model is trained to predict, given a noisy signal, how to denoise it by
+one step. Apply this $T$ times starting from pure noise and you get a new
+synthetic ECG that looks like real data but is not a copy.
+
+\textbf{Why ``DDPM''.}
+Denoising Diffusion Probabilistic Models (DDPM) is the specific recipe used
+here for how the denoising steps are defined and trained. 30 steps were
+enough to recover clinically plausible ECG morphology.
+
+\textbf{What is a UNet?}
+A UNet is a neural network shape that first compresses the input, then
+expands it back to the same length, with ``skip connections'' between the
+compression and expansion sides so detail is preserved. It is the standard
+choice for denoisers because the compressed part captures context and the
+expansion part restores detail. \textbf{Analogy:} a UNet is like zooming
+out to understand a big picture and then zooming back in carefully to draw
+the details.
+
+\textbf{Why ``1D''.}
+Our signal is a 1D time series, not a 2D image. A 1D UNet slides 1D
+convolutions along the time axis. It is lighter and more natural than a 2D
+UNet for ECG.
+
+\textbf{Why ``latent'' diffusion.}
+Running diffusion directly in signal space is expensive because each of the 30
+steps operates on the full 360 numbers. Latent diffusion first compresses the
+signal to a shorter representation (``latent space''), runs diffusion there,
+and decodes back. Faster training and inference without much quality loss.
+
+\textbf{Why class-conditional.}
+We don't want random ECGs; we want ``an APB that looks like an APB''. So we
+attach the class label as an extra input channel, and the model learns a
+separate denoising trajectory per class.
+
+\textbf{Why diffusion and not GAN?}
+GANs train two networks against each other (generator vs discriminator), which
+is notoriously unstable (``mode collapse''). Diffusion trains a single denoiser
+with a simple objective and is empirically more reliable for medical data.
+
+% ----------------------------------------------------------------------------
+\subsection{Part B-V --- Blockchain, smart contracts, Ethereum events, and Ganache (plain English)}
+\label{sec:blockchain-conceptual}
+
+\textbf{What a blockchain really is.}
+A blockchain is a shared append-only notebook. Many parties hold a copy of it.
+New entries are added in ordered ``blocks''. Once an entry is in, rewriting it
+would require rewriting every block after it on every copy of the notebook,
+which is practically infeasible. That is what ``tamper-evident'' means.
+
+\textbf{What Ethereum adds.}
+Ethereum is a blockchain that runs small programs called \emph{smart contracts}.
+A contract is just code with variables (state) and functions. When a function
+is called, every participant runs the same code and agrees on the result.
+
+\textbf{What a smart contract looks like in this project.}
+Ours is deliberately simple. It has no training logic. All it does is emit
+\emph{events} when the server reports something:
+\begin{itemize}
+\item \texttt{UpdateLogged(client, round, weightsHash, reportedAccuracy)}
+\item \texttt{RoundCompleted(round, globalModelHash)}
+\item \texttt{SyntheticRequested(client, round, requestedClass)}
+\item \texttt{SyntheticApproved(client, round, pocAtApproval)}
+\item \texttt{SyntheticGenerated(client, round, numSamples, sampleHash)}
+\end{itemize}
+These events are permanent in the chain history.
+
+\textbf{Why events (cheap) and not storage (expensive)?}
+On Ethereum, saving data into contract \emph{state} costs a lot of ``gas''
+(the transaction fee). Emitting an \emph{event} is much cheaper. Since we only
+need the history to be \emph{readable} later (not queryable from other contracts),
+events are the right primitive. That is the 84.6\% gas cost reduction figure.
+
+\textbf{What Ganache is.}
+Ganache is a local, private Ethereum simulator. It:
+\begin{itemize}
+\item Runs entirely on your laptop.
+\item Uses the exact same contract execution rules (EVM) as real Ethereum.
+\item Is deterministic (you control block timing), fast, and free.
+\end{itemize}
+\textbf{Analogy:} Ganache is a driving simulator; the car's controls are identical
+to a real car, but you can crash without paying damages. Perfect for a research
+prototype.
+
+\textbf{Why Ganache and not public Ethereum for a prototype?}
+Public Ethereum has real cost, unpredictable latency, and public visibility of
+every transaction. For a controlled research experiment, determinism and
+speed are essential.
+
+\textbf{Why Ganache and not Hyperledger Fabric?}
+Hyperledger is better for a real hospital consortium. But it requires more
+setup, its programming model is different from Ethereum, and its documentation
+is heavier. For an undergraduate FYP prototype that needs to demonstrate the
+concept in a reproducible way, Ethereum + Ganache is the right trade-off. The
+paper explicitly notes permissioned chains as a production direction.
+
+\textbf{Key bounded claim.}
+The ledger is not doing consensus for training; it is providing an
+\emph{auditable trail}. The same system could run on any tamper-evident log
+with signed entries. We use Ethereum because its event model is well-understood
+and well-tooled.
+
+% ----------------------------------------------------------------------------
+\subsection{Part B-VI --- Exponential Moving Average (EMA) in simple language}
+\label{sec:ema-conceptual}
+
+\textbf{The idea.} An EMA is a running average that weights recent values more
+than older ones. Every new value $x_r$ updates the EMA like this:
+\[
+\mathrm{EMA}_r = \gamma \cdot x_r + (1 - \gamma) \cdot \mathrm{EMA}_{r-1},
+\]
+where $\gamma \in (0, 1)$. With $\gamma = 0.7$, the new value contributes 70\%
+and the previous running average contributes 30\%.
+
+\textbf{Why not a simple average?}
+A simple average over all rounds treats round 1 and round 30 equally. If a client
+was honest for rounds 1--10 but malicious from round 11 onward, a simple average
+would take forever to catch up. An EMA adapts in a handful of rounds.
+
+\textbf{Why not just ``this round's accuracy''?}
+Then one unlucky round could kick out an honest client. An EMA smooths over
+noise but still adapts.
+
+\textbf{How this catches a sleeper.}
+Before activation, the sleeper's accuracy is high, so its EMA is high. After
+activation, its accuracy drops, and within a few rounds its EMA drops enough
+that it falls out of the top-$K$ and below the trust threshold.
+
+\textbf{Analogy:} EMA is like a rolling grade that weights the most recent exam
+more than the first one.
+
+% ----------------------------------------------------------------------------
+\subsection{Part B-VII --- Byzantine-robust aggregation family in simple language}
+\label{sec:robust-agg}
+
+All of these methods try to answer the same question: ``out of the updates the
+server got this round, which should I actually use?''
+
+\textbf{\fedavg.}
+Average everyone's updates, weighted by how much data each client had. No
+defence. The baseline.
+
+\textbf{\krum.}
+Pick the single update that is closest to the other updates in distance.
+Intuition: ``believe the one who is most like the crowd.'' Sensitive: if the
+crowd drifts a little bit, Krum picks a bad update.
+
+\textbf{\mkrum.}
+Same scoring as Krum but average multiple ``most-like-the-crowd'' updates
+instead of picking just one. More stable than Krum.
+
+\textbf{\median (coordinate-wise).}
+For each parameter of the model, take the median value across clients. A few
+extreme values can't bias the median. Statistically principled but penalises
+honest non-IID clients with legitimately unusual values.
+
+\textbf{\tmean (coordinate-wise).}
+For each parameter, drop the top and bottom 20\% of values and average the
+rest. Similar to median in spirit; slightly more flexible.
+
+\textbf{\bulyan.}
+A two-stage defence: first filter outliers using a \mkrum-style step, then
+average what's left using \tmean. Considered the strongest classical defence.
+
+\textbf{The common limitation.}
+All five treat each round independently. They know nothing about the client's
+past. They are all geometry-based. None of them can catch a sleeper before it
+activates, because the sleeper looks normal in every single round's geometry.
+
+\textbf{What PoC adds.}
+PoC is the first ``behavioural'' rule in this comparison grid. It doesn't look
+at weight geometry; it looks at accuracy history. This is why it is the only
+method that stays safe under the sleeper attack.
+
+% ----------------------------------------------------------------------------
+\subsection{Part B-VIII --- Backdoors, sleeper attacks, and ``critical-layer flip'' (plain English)}
+\label{sec:backdoor-conceptual}
+
+\textbf{What a backdoor is (not a classifier bug).}
+A backdoor is a hidden rule inserted into the model: ``on most inputs, behave
+normally, but on these specific inputs, output the attacker's chosen label.''
+So the model still looks good on ordinary evaluation, while failing silently
+on the attacker's target pattern.
+
+\textbf{Sleeper behaviour, step by step.}
+\begin{enumerate}
+\item Rounds 1--14: the Byzantine client trains normally. Its updates look
+like any other honest update.
+\item Round 15: the client switches mode. It flips labels on the target class
+(APB becomes LBBB in this project).
+\item Rounds 15--40: it keeps uploading poisoned updates that nudge the global
+model toward the backdoor.
+\end{enumerate}
+This is called a \emph{sleeper} because it is dormant for a long time before
+activating.
+
+\textbf{``Backdoor-critical layer'' in simple terms.}
+The deeper layers of a classifier near the output act like a decision-maker;
+the earlier layers extract features. A backdoor can be inserted by changing
+only a small number of layers near the output (the ``critical'' ones). Result:
+most of the model's weights look identical to the honest model, so geometric
+defences see only a tiny difference, well within honest non-IID noise.
+
+\textbf{Why this breaks robust aggregation.}
+Robust aggregators look for updates that are ``too far'' from the crowd. A
+critical-layer flip changes almost nothing in most coordinates, and only
+slightly in a few. The update \emph{is} close to the crowd. Nothing to filter.
+
+\textbf{Why PoC catches it.}
+The attacker's own validation accuracy on honest data drops as soon as the flip
+begins. That drop is exactly the signal PoC's EMA watches. Geometry sees no
+anomaly; behaviour does.
+
+% ----------------------------------------------------------------------------
+\subsection{Part B-IX --- Classification metrics in simple language}
+\label{sec:metrics-conceptual}
+
+\textbf{Precision, recall, F1 in one picture.}
+Suppose the model predicted some beats as APB.
+\begin{itemize}
+\item \textbf{Precision:} of the ones the model called APB, how many actually are APB?
+\item \textbf{Recall:} of the beats that actually are APB, how many did the model catch?
+\item \textbf{F1:} a single number that balances precision and recall (higher is better; $F1 = 2 \cdot \frac{P \cdot R}{P + R}$).
+\end{itemize}
+
+\textbf{Macro-F1.}
+Average F1 across all classes, treating each class equally (ignoring how many
+examples each class has). This is why it can look good even if the rare class
+is failing.
+
+\textbf{APB-F1 (our primary metric).}
+The F1 score specifically on the APB class. Why primary? Because APB is rare
+and clinically dangerous; missing APB is a safety failure. A method that gets
+high macro-F1 but low APB-F1 is clinically useless.
+
+\textbf{Backdoor Success Rate (BSR).}
+Fraction of trigger samples that the classifier assigns to the attacker's
+chosen wrong label. Lower is better. BSR matters in the diffusion-augmented
+setting: two defences can have similar APB-F1 but very different BSR because
+a higher BSR means the attacker has still leaked backdoor capacity even if the
+average metric looks healthy.
+
+\textbf{Why precision often matters more than recall here.}
+In cardiology, a false APB triggers a workup that costs time and money; a
+missed APB risks patient harm. Both matter, but because the dataset has so
+many Normal beats, the model easily gets high recall by being liberal, and the
+harder part is keeping precision up without sacrificing recall.
+
+\textbf{One viva-ready line.}
+\textit{``Macro-F1 hides rare-class failure; we use APB-F1 as the primary
+clinical metric and BSR as the security metric because together they show both
+the clinical outcome and the residual attack success.''}
+
+% ----------------------------------------------------------------------------
+\subsection{Part C --- Every design choice explained (``why this, not that'')}
+\subsection{Part C --- Every design choice explained (``why this, not that'')}
+
+\subsubsection{C.1 --- Why CNN--LSTM for the classifier?}
+
+\textbf{What it does.} A 1D CNN extracts local morphology features (the
+shape of the QRS complex, the position and amplitude of P and T waves).
+An LSTM on top of the CNN features captures the temporal dependency
+between samples of the 360-sample window.
+
+\textbf{Why not alternatives?}
+\begin{itemize}
+\item \textbf{Pure MLP.} Ignores temporal locality; can work but is brittle on noisy waveforms and is not standard for ECG in the literature.
+\item \textbf{Pure CNN.} Captures local morphology well, but a single-window ECG beat depends on the preceding context; LSTM adds temporal robustness for noisy or borderline beats.
+\item \textbf{Pure RNN / GRU.} Similar to LSTM but typically slightly less stable on long morphology windows.
+\item \textbf{Transformers.} Would be more flexible, but:
+  \begin{itemize}
+  \item They need more data per site (FL clients often have small splits).
+  \item They have more hyperparameters, which would confound the security study.
+  \item Compute cost during 40 rounds $\times$ 10 clients $\times$ 3 epochs is non-trivial for a research prototype on a single T4.
+  \end{itemize}
+\item \textbf{Pretrained foundation models.} Possible but they hide capacity: in an FL security study, you need the classifier to be simple enough that the security mechanism, not the base model, explains the results.
+\end{itemize}
+
+\textbf{The deeper reason.} The paper's contribution is a security /
+governance mechanism. A classifier that is too powerful would \emph{mask}
+the attacks (and reviewers would ask ``did your defence matter, or did
+the classifier just absorb the attack?''). CNN--LSTM is the right level of
+complexity: strong enough to give meaningful APB-F1, simple enough to
+expose failure under attack.
+
+\subsubsection{C.2 --- Why 1D latent diffusion for augmentation?}
+
+\textbf{What it does.} A class-conditional 1D UNet with latent diffusion
+generates synthetic ECG windows of a specific class on request.
+Inference uses 30 DDPM steps. Conditioning is by channel concatenation:
+the normalised class label is broadcast along the time axis and fed as
+a second input channel.
+
+\textbf{Why diffusion (vs GAN / VAE / TimeGAN / copy-paste oversampling)?}
+\begin{itemize}
+\item \textbf{GAN / TimeGAN.} The proposal originally considered TimeGAN. GANs have known training instability (mode collapse, vanishing gradients). For a federated setting, where training budgets are already tight, diffusion is empirically more stable and gives better class diversity.
+\item \textbf{VAE.} Simpler to train but produces blurrier samples; class-conditional fidelity on rare arrhythmia morphology suffers.
+\item \textbf{SMOTE / copy-paste resampling.} Does not produce genuinely new morphology; does not help the model learn richer APB variants; and is easy to exploit (an attacker can game oversampling trivially).
+\item \textbf{Latent diffusion.} Compresses input to a lower-dimensional latent space, then diffuses there. This is much cheaper than pixel-space (sample-space) diffusion and is the same rationale as the 2D image case.
+\end{itemize}
+
+\textbf{Why 1D and not 2D?}
+\begin{itemize}
+\item ECG is natively a 1D signal; turning it into a 2D spectrogram and then back again adds artifacts and complexity without benefit.
+\item 1D UNet is lighter, faster, and matches inductive bias.
+\end{itemize}
+
+\textbf{Why 30 DDPM steps?}
+Fewer steps $\Rightarrow$ faster inference but worse quality;
+more steps $\Rightarrow$ slower but diminishing returns.
+30 steps was the lowest count at which generated waveforms still had
+clinically plausible QRS morphology, chosen empirically.
+
+\textbf{Why 500 synthetic samples per request?}
+Large enough to shift the loss landscape on the deficient class
+during a training round, but small enough to avoid dominating the
+local training set. A request cap prevents a malicious requester
+from overwhelming honest data even if somehow approved.
+
+\subsubsection{C.3 --- Why blockchain at all? And specifically why Ganache?}
+
+\textbf{What problem the blockchain solves.}
+In a multi-hospital deployment, \emph{who trusts whom} is the core
+question. A simple ``signed append-only log'' maintained by one party
+(say, the orchestrator) still requires participants to trust that party
+to not rewrite history. Blockchain gives:
+\begin{enumerate}
+\item A shared, ordered, tamper-evident record of events.
+\item Verifiable approval receipts (so the augmentation pipeline becomes auditable).
+\item A neutral substrate on which post-hoc forensics can run, without any single participant being able to rewrite the past.
+\end{enumerate}
+
+In this project the ledger has exactly two roles:
+\begin{enumerate}
+\item Persist update and round-completion receipts (what was aggregated and when).
+\item Persist the synthetic-request approval chain (what was approved, by whom, at what PoC score).
+\end{enumerate}
+
+\textbf{Why Ganache (local Ethereum) for a research prototype?}
+\begin{itemize}
+\item \textbf{Deterministic and free.} Every run is reproducible; no gas cost limits experimentation.
+\item \textbf{Same EVM semantics as mainnet.} Solidity contracts, event logs, transaction receipts all behave like ``real'' Ethereum.
+\item \textbf{Latency is predictable.} This keeps the federated training loop honest: if something takes time, it is the training, not a public mempool.
+\item \textbf{No external dependency during experiments.} Stability matters for a 40-round experiment.
+\end{itemize}
+
+\textbf{Why an event-emitting (``LOG opcode'') contract, not state-heavy storage?}
+\begin{itemize}
+\item On Ethereum, persistent storage (\texttt{SSTORE}) is expensive; \texttt{LOG} opcodes (events) are cheap.
+\item The receipts only need to be \emph{readable} to a validator who replays the chain; they don't need to be queryable via contract state.
+\item Therefore the contract emits \texttt{UpdateLogged}, \texttt{RoundCompleted}, \texttt{SyntheticRequested/Approved/Generated} events, and keeps almost no persistent state.
+\item This is what enables the 84.6\% gas reduction figure vs storing arrays via SSTORE.
+\end{itemize}
+
+\textbf{Why not Hyperledger / permissioned blockchain?}
+\begin{itemize}
+\item Hyperledger Fabric would actually fit a hospital consortium very well in production.
+\item For a research prototype, Ganache was chosen because it is faster to set up, deterministic, and aligned with the widely-understood EVM model, which makes the contribution reproducible.
+\item The paper explicitly calls permissioned chains / L2 a reasonable production direction.
+\end{itemize}
+
+\textbf{Key boundary (do not over-claim).}
+The blockchain is \emph{not} performing training; PoC is \emph{not} a
+consensus protocol; the chain does not replace the orchestrator. It is
+an accountability layer.
+
+\subsubsection{C.4 --- Why Proof-of-Contribution (behavioural) and not robust aggregation (geometric)?}
+
+\textbf{Core insight.} Geometry-only defences answer the question
+``does this client's update look like the crowd in this round?''
+This is blind to \emph{time}.
+
+A sleeper attacker by design looks exactly like the crowd until round
+15, then silently flips. Up to round 15, no per-round rule can filter
+it --- there is no anomaly yet. After round 15, the poisoned updates
+can still be crafted to stay close to honest updates in weight space,
+especially under non-IID where honest clients legitimately disagree.
+
+What geometry cannot see but PoC can:
+\begin{itemize}
+\item \textbf{Time-varying behaviour.} PoC's EMA is built precisely to detect a change in behaviour over multiple rounds.
+\item \textbf{Self-inflicted accuracy drop.} A label-flip attacker hurts its own validation accuracy on honest validation data. Geometry doesn't know that; PoC is exactly that signal.
+\end{itemize}
+
+\textbf{Why not a heavier reputation system (like Kang et al.)?}
+\begin{itemize}
+\item Those systems are designed for participation economics / identity management. They are heavier and come with their own attack surface.
+\item PoC is intentionally minimal (one EMA, one participation factor) because the aim was to prove the \emph{principle}: a behavioural history is enough.
+\end{itemize}
+
+\subsubsection{C.5 --- Why the same model family across all experiments?}
+
+This is an important viva question. The honest answer:
+\begin{itemize}
+\item \textbf{Experimental control.} To argue ``defence X is better than defence Y'', everything else must be identical: same classifier, same data partitioning, same attacks, same non-IID setting, same training budget. Otherwise the conclusion is contaminated.
+\item \textbf{Fairness to baselines.} Changing the classifier for each defence would let someone claim your gains come from model capacity, not from the defence.
+\item \textbf{Clarity of the contribution.} The research contribution is the security/governance stack, not the classifier or the generator.
+\end{itemize}
+
+If asked ``did you try different classifiers / different generators?'':
+answer honestly that controlled comparison is why a single well-chosen
+pair (CNN--LSTM + 1D latent UNet) was held constant; exploring other
+classifiers or generators is legitimate future work.
+
+\subsubsection{C.6 --- Why these specific baselines?}
+
+\begin{itemize}
+\item \textbf{FedAvg.} The ``no-defence'' reference. Any honest security claim must include it to show what happens without defence.
+\item \textbf{Krum.} The canonical single-update Byzantine-robust aggregator, known to be geometry-based; expected to fail under sleeper.
+\item \textbf{Multi-Krum.} Generalisation of Krum to multi-client averaging; less brittle than Krum but still geometric.
+\item \textbf{Coordinate-wise Median.} Statistically optimal under certain Byzantine ratios; penalises honest non-IID tails.
+\item \textbf{Trimmed-Mean.} Closely related; drops extreme values per coordinate; penalises non-IID outliers.
+\item \textbf{Bulyan.} Composes Multi-Krum with Trimmed-Mean; strongest classical robust aggregator.
+\item \textbf{PoC (ours).} Behavioural.
+\end{itemize}
+
+Together they span the three natural families (selection-based,
+coordinate-wise, composed) and make it impossible for a reviewer to
+say ``you didn't test against the obvious baseline''.
+
+\subsubsection{C.7 --- Why these specific attacks?}
+
+The three attacks are deliberately of \emph{three different flavours},
+not three variants of the same thing:
+\begin{enumerate}
+\item \textbf{Gaussian poisoning.} The blatant ``sanity-check'' attack from the original robust-FL literature. If a defence cannot stop this, it's unusable. FedAvg famously fails here.
+\item \textbf{Static label-flip (Normal$\leftrightarrow$LBBB, colluding).} A stealthier attack where updates \emph{look} like valid training steps (normal magnitudes, normal directions) but on wrong labels. This specifically probes whether a defence relies only on weight-space geometry.
+\item \textbf{Sleeper backdoor (APB$\rightarrow$LBBB, critical-layer fine-tune, round 15 activation).} The worst case for any per-round defence: pre-activation there is no anomaly, so geometry cannot pre-train a filter; post-activation only a subset of backdoor-critical layers is modified, keeping weight-space signatures normal.
+\end{enumerate}
+
+This triple is also why the paper can claim ``across all three attacks''
+with a straight face: they span the adversary's strategy space.
+
+\subsubsection{C.8 --- Why the specific hyperparameters?}
+
+\begin{itemize}
+\item \textbf{Dirichlet $\alpha=0.5$.} Standard non-IID stress setting in FL; not so extreme that training collapses even for honest FedAvg, not so mild that it's essentially IID.
+\item \textbf{10 clients, 2 Byzantine (20\%).} Realistic minority-threat ratio; matches classical robust-FL assumptions (Krum-family is designed for <25\% Byzantines).
+\item \textbf{40 rounds.} Enough for global convergence and also enough headroom for the sleeper to activate at round 15 and have 25 more rounds to manifest. Fewer rounds would hide the sleeper's impact.
+\item \textbf{3 local epochs, batch 128, Adam $10^{-3}$.} Conservative, stable training.
+\item \textbf{EMA $\gamma=0.7$.} Chosen so that a single bad round can move the EMA noticeably, but a single lucky round cannot rehabilitate a bad client.
+\item \textbf{Trust threshold $\tau=0.4$.} Empirically the level at which pre-activation attackers are admitted (so they don't poison the very first rounds via denial of synthetic help) but post-activation attackers are rejected.
+\item \textbf{Top-$K=7$ out of 10.} Enough to keep honest non-IID diversity, but still filters out the bottom three lowest-PoC clients per round.
+\end{itemize}
+
+\subsubsection{C.9 --- Why these metrics?}
+
+\begin{itemize}
+\item \textbf{Primary: APB-F1.} Clinical relevance. APB is rare and dangerous; missing APB is a safety failure, not a performance issue.
+\item \textbf{Secondary: Macro-F1.} Required by tradition, but deliberately de-emphasised because it can mask minority-class failure.
+\item \textbf{Backdoor Success Rate (BSR).} Only applies in the diffusion-augmented setting. It captures residual backdoor capacity even when APB-F1 is healthy. This is where the blind-vs-trust-gated difference shows up most clearly.
+\item \textbf{Latency.} Included only to show the ledger is not a wall-clock bottleneck; explicitly not a contribution.
+\end{itemize}
+
+% ----------------------------------------------------------------------------
+\subsection{Part D --- Threat model, stated formally (for questions)}
+
+\textbf{Adversary capabilities.}
+\begin{itemize}
+\item Controls 2 out of 10 clients throughout all 40 rounds (20\% Byzantine, static).
+\item Knows the training protocol, defences, and the existence of PoC.
+\item Can collude between its 2 clients (synchronise batch truncation, synchronise activation).
+\item Can choose between three attack strategies (Gaussian, label-flip, sleeper) and, in the augmented setting, can also file flipped-label synthetic requests.
+\end{itemize}
+
+\textbf{Adversary limitations.}
+\begin{itemize}
+\item Cannot corrupt the orchestrator.
+\item Cannot rewrite chain history.
+\item Cannot tamper with the public proxy validation set used for PoC accuracy scoring.
+\item Does not adaptively evolve PoC-aware attacks --- this is explicitly listed as a limitation and future work.
+\end{itemize}
+
+% ----------------------------------------------------------------------------
+\subsection{Part E --- The result story, retold as a narrative}
+
+Think of the results as answering five questions in sequence:
+
+\begin{enumerate}
+\item \emph{Is any standard FL safe here?} No. FedAvg collapses to APB-F1 $=0$ under Gaussian.
+\item \emph{Can single-round geometry save us?} Krum collapses to 0.306 under sleeper. Multi-Krum, Median, Trimmed-Mean, Bulyan all drop below 0.75 in at least one attack.
+\item \emph{Does behavioural history help?} Yes. PoC is the \emph{only} defence that stays above 0.75 across all three attacks (worst case 0.786).
+\item \emph{Is there a second attack surface nobody looks at?} Yes --- the augmentation pipeline. An attacker can inject poison via flipped-label synthetic requests.
+\item \emph{Can governance close it?} Yes. Trust-gated diffusion with PoC raises APB-F1 to 0.879 and lowers the final-round backdoor success rate vs blind diffusion.
+\end{enumerate}
+
+This sequence is exactly what you should walk a jury through.
+
+% ----------------------------------------------------------------------------
+\subsection{Part F --- Mega Q\&A (more than 50)}
+
+\textit{If you can answer these, you are in hero mode.}
+
+\subsubsection{F.1 --- Model choices}
+\begin{enumerate}
+\item \textbf{Why CNN--LSTM and not Transformer?} Data efficiency, stability, prototype clarity, reduced confounding.
+\item \textbf{Why not use a pretrained ECG foundation model?} It would mask the security effects the paper is trying to isolate.
+\item \textbf{Why use LSTM at all; isn't CNN enough?} LSTM adds temporal robustness on borderline windows.
+\item \textbf{How many parameters is the classifier?} A compact CNN--LSTM in the low millions; exact number is irrelevant to the security claim; the point is it's small enough for all 10 FL clients to train.
+\item \textbf{Why 360-sample windows at 360Hz?} MIT-BIH is at 360Hz and EC57 recommends single-beat windows; 360 samples = 1 second ~centred on the R-peak.
+\end{enumerate}
+
+\subsubsection{F.2 --- Diffusion choices}
+\begin{enumerate}
+\item \textbf{Why diffusion, not a GAN?} Diffusion is more stable and less prone to mode collapse; matters because the generator is trained once and trusted later.
+\item \textbf{Why latent diffusion vs pixel-space?} Cheaper inference, same empirical quality in 1D.
+\item \textbf{Why 30 steps?} Minimum step count at which QRS morphology looked clinically plausible.
+\item \textbf{Is the generator trained during FL?} No. It is pretrained once on pooled honest ECG data and then frozen; only inference runs in the FL loop.
+\item \textbf{Does the generator see test data?} No; only pooled honest training data.
+\item \textbf{Why class-conditional by channel concatenation?} Simplest robust conditioning method for a 1D UNet; avoids embedding networks.
+\item \textbf{Why cap at 500 synthetic samples per request?} Enough to repair rare-class deficit; not so many that honest data is overwhelmed.
+\item \textbf{What stops an attacker from asking too many times?} On-chain rate-limiting via the same PoC gate; rejected requests are logged.
+\end{enumerate}
+
+\subsubsection{F.3 --- FL choices}
+\begin{enumerate}
+\item \textbf{Why 10 clients?} Enough diversity for meaningful non-IID; feasible for 40 rounds $\times$ 3 epochs on a single T4 with synchronous diffusion inference.
+\item \textbf{Why 40 rounds?} Long enough for convergence and post-sleeper dynamics to show up.
+\item \textbf{Why 3 local epochs?} Classic FL compromise --- fewer epochs mean more communication, more epochs risk client drift.
+\item \textbf{Why Adam and not SGD?} Stable on ECG with limited tuning; removes a free variable from the security experiment.
+\item \textbf{Why top-$K=7$?} Filters out a modest bottom tail without over-pruning the honest non-IID diversity.
+\item \textbf{Does the server train anything?} No. The server only aggregates and evaluates.
+\item \textbf{Is PoC computed during training or after?} It is computed each round, before selection for the next round.
+\end{enumerate}
+
+\subsubsection{F.4 --- Blockchain choices}
+\begin{enumerate}
+\item \textbf{Why blockchain at all?} Tamper-evident, shared receipts; auditable approvals.
+\item \textbf{Why not a signed log?} A signed log still needs one party to maintain it.
+\item \textbf{Why Ganache?} Deterministic local Ethereum; same EVM semantics as production.
+\item \textbf{Why event-only contract?} Events are cheap; receipts don't need contract-level queryability.
+\item \textbf{Does the chain slow training?} No; overhead is bounded; latency is not claimed as a contribution.
+\item \textbf{Is the chain needed for correctness?} For correctness of FL, no. For \emph{auditability} and the augmentation-governance property, yes.
+\item \textbf{Could you swap Ganache for Hyperledger?} Yes; permissioned chains fit a real hospital consortium.
+\item \textbf{Is gas cost a real claim?} No. It is only a sanity check that the chosen design (events, not storage) would not cripple a production deployment.
+\item \textbf{What if the chain goes down?} Defensive handlers treat that round as neutral and training continues.
+\end{enumerate}
+
+\subsubsection{F.5 --- Security and attacks}
+\begin{enumerate}
+\item \textbf{What is the threat model?} 20\% colluding Byzantine clients, static throughout training, with full knowledge of protocol.
+\item \textbf{What is a sleeper attack?} A client that acts honestly until the global model stabilises, then flips labels.
+\item \textbf{What is ``backdoor-critical-layer flip''?} Only the tail layers of the classifier are fine-tuned on the flipped labels, so most weights look unchanged.
+\item \textbf{What is the augmentation stealth channel?} A malicious synthetic request with a flipped label.
+\item \textbf{Why can't Krum block the augmentation channel?} Because the poison is baked into training data before the aggregator ever sees any update.
+\item \textbf{How does PoC catch the sleeper?} Flipping labels lowers the attacker's own validation accuracy; PoC's EMA reacts and drops the attacker out of top-$K$ and below $\tau$.
+\item \textbf{What happens between rounds 15--25?} APB-F1 temporarily oscillates for some defences; for PoC it recovers; for Krum it degrades.
+\item \textbf{What is BSR?} Backdoor Success Rate: fraction of triggered samples classified as the attacker-desired label.
+\item \textbf{Why is BSR high even when APB-F1 is high?} Because APB-F1 is a whole-class metric; BSR catches targeted failures that F1 can average away.
+\end{enumerate}
+
+\subsubsection{F.6 --- Metrics, experiments, honesty}
+\begin{enumerate}
+\item \textbf{Why APB-F1 as primary?} Clinical relevance; minority-class safety.
+\item \textbf{Why macro-F1 as secondary?} Tradition and sanity; shows that the per-class story is the real story.
+\item \textbf{Why single-seed?} Compute cost of 40-round FL with synchronous latent-diffusion inference; multi-seed is future work; the observed effect is structural.
+\item \textbf{Is there variance analysis?} No multi-seed variance; explicitly declared as a limitation.
+\item \textbf{Do you cross-validate?} Each client holds out 15\% for test; test is held out across all 40 rounds; no snooping.
+\item \textbf{What about PTB-XL / MIMIC-IV?} Not evaluated here; future work.
+\item \textbf{Are the numbers in prose and figures consistent?} Yes; they are extracted programmatically from the serialised artefacts; this addresses an ACISP reviewer complaint.
+\end{enumerate}
+
+\subsubsection{F.7 --- Limitations and honest caveats}
+\begin{enumerate}
+\item Single-seed per cell (compute budget).
+\item Static 20\% Byzantine ratio; higher ratios not tested.
+\item Non-adaptive adversary (does not evolve with PoC knowledge).
+\item Only MIT-BIH; no cross-dataset validation.
+\item Gas accounting is illustrative, not a production benchmark.
+\item No formal proof that PoC is optimal; it is a strong empirical baseline for a behavioural signal.
+\item Orchestrator is assumed honest; decentralising the orchestrator is future work.
+\item Public proxy validation set could itself be attacked in principle; production would need signed proxy or secure evaluation.
+\end{enumerate}
+
+% ----------------------------------------------------------------------------
+\subsection{Part G --- Common viva traps and how to avoid them}
+
+\begin{itemize}
+\item \textbf{Trap:} ``So the blockchain does the learning / consensus?''\\
+\textbf{You:} No. The ledger records receipts. PoC is a score, not a proof. Training is off-chain.
+
+\item \textbf{Trap:} ``Macro-F1 says FedAvg is fine under label-flip.''\\
+\textbf{You:} True in aggregate, but macro-F1 hides the minority-class failure; the whole point is that APB-F1 is the deployment-critical number.
+
+\item \textbf{Trap:} ``Krum is supposed to be robust; why did it fail?''\\
+\textbf{You:} Krum is robust to geometric outliers in a single round. Sleeper attacks are time-varying and stealthy; they don't look like outliers pre-activation, and post-activation the critical-layer flips keep the weights geometrically normal.
+
+\item \textbf{Trap:} ``Isn't diffusion overkill for ECG?''\\
+\textbf{You:} It is heavier than SMOTE, but diffusion gives genuine class-conditional diversity that SMOTE or GAN cannot reliably produce; and more importantly, the paper's novelty is not the generator but governance around the generator.
+
+\item \textbf{Trap:} ``What if attackers compromise the orchestrator?''\\
+\textbf{You:} That is outside the threat model, but the ledger would still expose the manipulation post-hoc; decentralising the orchestrator is future work.
+
+\item \textbf{Trap:} ``Why didn't you test with more attackers?''\\
+\textbf{You:} 20\% is the standard setting for robust-FL comparisons. Higher ratios (explicit limitation) are future work.
+
+\item \textbf{Trap:} ``Why not just use a bigger classifier to beat the attack?''\\
+\textbf{You:} Capacity doesn't help against label-flip / backdoor attacks; in fact, higher-capacity models memorise backdoors more reliably.
+\end{itemize}
+
+% ----------------------------------------------------------------------------
+\subsection{Part H --- 60-second elevator pitch (memorise verbatim)}
+
+\textit{``Clinical ECG federated learning has two simultaneous problems: 
+non-IID hospital data and realistic Byzantine clients that target rare 
+dangerous classes. Classical robust aggregation only looks at one 
+round of weights at a time, which is why sleeper backdoor attacks 
+defeat them. Active-Ledger fixes this with a behavioural trust score 
+(Proof-of-Contribution) that uses multi-round accuracy history, 
+stored on a tamper-evident ledger. The same trust score also 
+governs a separate attack surface nobody else has closed --- 
+malicious synthetic data requests. Across three different attacks, 
+Proof-of-Contribution is the only defence that keeps APB-F1 above 
+the 0.75 deployability line, and adding trust-gated diffusion raises 
+it further to 0.879 while lowering backdoor success rate. The 
+blockchain is explicitly not doing the learning --- it is the audit 
+layer that makes both aggregation and augmentation accountable.''}
+
+% ----------------------------------------------------------------------------
+\subsection{Part I --- What to study the night before (priority list)}
+
+\begin{enumerate}
+\item The 8-step round trace (Part B) --- can you say all 8 steps out loud?
+\item The five-question result narrative (Part E).
+\item The three attack descriptions, each in one sentence.
+\item Why geometry-only fails against sleeper (Part C.4).
+\item Why the ledger is needed (Part C.3) --- without over-claiming.
+\item The six memorised numbers: 0.75, 0.786, 0.879, 0.857, 0.306, 0.000.
+\item The elevator pitch (Part H).
+\item The top 20 Q\&A answers from Section 9.
+\end{enumerate}
+
+\textit{If you have all of this, you can defend every slide.}
+
+\end{document}
+
